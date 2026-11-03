@@ -167,6 +167,39 @@ await step('a student with the wrong class key is refused', async () => {
   if (count !== 1) throw new Error(`expected 1 student, saw ${count}`);
 });
 
+await step('a new student joins through the setup window', async () => {
+  const env = { ...base, CM_USER_DATA: path.join(tmp, 'newcomer') };
+  delete env.CM_CLASS_KEY;
+  delete env.CM_ROOM;
+  const setupPage = (app) => app.windows().find((p) => p.url().endsWith('setup.html'));
+
+  let newcomer = await electron.launch({ args: ['dist/student/main.js'], env });
+  await waitFor(async () => setupPage(newcomer));
+  const setup = setupPage(newcomer);
+  await setup.waitForSelector('.option:has-text("E2E Room")', { timeout: 10_000 });
+
+  await setup.fill('#key', 'NOT-THE-RIGHT-KEY');
+  await setup.click('#join');
+  await setup.waitForSelector('#status.error', { timeout: 15_000 });
+
+  // Keys are case-insensitive: the teacher's key is "e2e-test-class-key".
+  await setup.fill('#key', 'E2E-Test-Class-Key');
+  await setup.screenshot({ path: path.join(out, '5-setup-window.png') });
+  await setup.click('#join');
+  await setup.waitForSelector('#status.ok', { timeout: 15_000 });
+  await page.waitForFunction(() => document.querySelectorAll('.card').length === 2, null, { timeout: 10_000 });
+  await waitFor(async () => !setupPage(newcomer));
+  await newcomer.close();
+  await page.waitForFunction(() => document.querySelectorAll('.card').length === 1, null, { timeout: 10_000 });
+
+  // Restarted, it rejoins from the saved settings without asking again.
+  newcomer = await electron.launch({ args: ['dist/student/main.js'], env });
+  await page.waitForFunction(() => document.querySelectorAll('.card').length === 2, null, { timeout: 15_000 });
+  const asked = Boolean(setupPage(newcomer));
+  await newcomer.close();
+  if (asked) throw new Error('setup window reopened after a successful join');
+});
+
 await step('a student locked when the teacher disappears is unlocked', async () => {
   await page.click('#lock-all');
   await page.click('#lock-confirm');

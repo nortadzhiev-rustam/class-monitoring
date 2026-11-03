@@ -20,7 +20,8 @@ interface LinkEvents {
   connected: [{ teacher: string; room: string; host: string }];
   disconnected: [];
   message: [TeacherMessage, Buffer | undefined];
-  error: [string];
+  /** A connection attempt failed; `rejected` means the class key didn't match. */
+  failed: [message: string, rejected: boolean];
 }
 
 const DIRECT_RETRY_MS = 3000;
@@ -29,9 +30,27 @@ const BACKOFF_MS = 30_000;
 /** The teacher pings every 10 s; silence this long means the link is dead. */
 const SILENCE_LIMIT_MS = 30_000;
 
+/** Calls `onBeacon` for every ClassMonitor teacher beacon heard on the network. */
+export function watchBeacons(onBeacon: (beacon: Beacon, host: string) => void): dgram.Socket {
+  const socket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
+  socket.on('error', (err) => console.warn('[discovery]', err.message));
+  socket.on('message', (data, rinfo) => {
+    let beacon: Beacon;
+    try {
+      beacon = JSON.parse(data.toString('utf8'));
+    } catch {
+      return;
+    }
+    if (beacon.app === APP_ID && beacon.v === PROTOCOL_VERSION && typeof beacon.room === 'string') onBeacon(beacon, rinfo.address);
+  });
+  socket.bind(DISCOVERY_PORT);
+  return socket;
+}
+
 export class TeacherLink extends EventEmitter<LinkEvents> {
   private channel: SecureChannel<TeacherMessage, StudentMessage> | null = null;
   private connecting = false;
+  private stopped = false;
   private readonly classKey: Buffer;
   private readonly backoff = new Map<string, number>();
   private socket: dgram.Socket | null = null;
@@ -55,7 +74,9 @@ export class TeacherLink extends EventEmitter<LinkEvents> {
   }
 
   start(): void {
-    this.listenForBeacons();
+    this.socket = watchBeacons((beacon, host) => {
+      if (beacon.room === this.config.room) void this.connect(host, Number(beacon.port));
+    });
     const { teacherHost, teacherPort } = this.config;
     if (teacherHost) {
       const tryDirect = () => void this.connect(teacherHost, teacherPort);
@@ -70,6 +91,7 @@ export class TeacherLink extends EventEmitter<LinkEvents> {
   }
 
   stop(): void {
+    this.stopped = true;
     for (const timer of this.timers) clearInterval(timer);
     this.socket?.close();
     this.channel?.close(1001, 'student agent closed');
@@ -79,32 +101,19 @@ export class TeacherLink extends EventEmitter<LinkEvents> {
     this.channel?.send(msg, payload);
   }
 
-  private listenForBeacons(): void {
-    const socket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
-    socket.on('error', (err) => console.warn('[discovery]', err.message));
-    socket.on('message', (data, rinfo) => {
-      let beacon: Beacon;
-      try {
-        beacon = JSON.parse(data.toString('utf8'));
-      } catch {
-        return;
-      }
-      if (beacon.app !== APP_ID || beacon.v !== PROTOCOL_VERSION || beacon.room !== this.config.room) return;
-      void this.connect(rinfo.address, Number(beacon.port));
-    });
-    socket.bind(DISCOVERY_PORT);
-    this.socket = socket;
-  }
-
   private async connect(host: string, port: number): Promise<void> {
     const key = `${host}:${port}`;
-    if (this.channel || this.connecting || (this.backoff.get(key) ?? 0) > Date.now()) return;
+    if (this.stopped || this.channel || this.connecting || (this.backoff.get(key) ?? 0) > Date.now()) return;
     this.connecting = true;
 
     const ws = new WebSocket(`ws://${host}:${port}`, { handshakeTimeout: 5000, maxPayload: 16 * 1024 * 1024 });
     ws.on('error', () => {}); // Reported through the handshake's close handling.
     try {
       const channel = await connectToTeacher<TeacherMessage, StudentMessage>(ws, this.classKey);
+      if (this.stopped) {
+        channel.close(1001, 'student agent closed');
+        return;
+      }
       this.channel = channel;
       this.lastHeard = Date.now();
       channel.onPing(() => (this.lastHeard = Date.now()));
@@ -121,11 +130,12 @@ export class TeacherLink extends EventEmitter<LinkEvents> {
       channel.send({ type: 'info', info: this.info() });
     } catch (err) {
       const message = (err as Error).message;
+      const rejected = /class key|authentication/.test(message);
+      if (rejected || /protocol/.test(message)) this.backoff.set(key, Date.now() + BACKOFF_MS);
       if (!/ECONNREFUSED|closed during handshake \(1006/.test(message)) {
         console.warn(`[link] ${key}: ${message}`);
-        this.emit('error', message);
+        if (!this.stopped) this.emit('failed', message, rejected);
       }
-      if (/key|authentication|protocol/.test(message)) this.backoff.set(key, Date.now() + BACKOFF_MS);
     } finally {
       this.connecting = false;
     }

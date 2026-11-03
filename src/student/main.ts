@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { Socket } from 'node:dgram';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -9,17 +10,20 @@ import {
   ipcMain,
   Menu,
   nativeImage,
+  nativeTheme,
   screen,
   shell,
   systemPreferences,
   Tray,
   type IpcMainEvent,
+  type IpcMainInvokeEvent,
 } from 'electron';
 import { configureApp, primaryScreenSource, shareScreenWithoutPicker } from '../shared/electron-setup';
 import type { Platform, RtcSignal, StudentInfo, TeacherMessage } from '../shared/protocol';
-import { loadStudentConfig, systemConfigPath, type StudentConfig } from './config';
-import { TeacherLink } from './connection';
+import { isManagedConfig, loadStudentConfig, readUserConfig, saveUserConfig, type StudentConfig } from './config';
+import { TeacherLink, watchBeacons } from './connection';
 import { INPUT_DRY_RUN, InputInjector } from './input';
+import type { DiscoveredClass, SetupDetails, SetupStatus } from './ipc';
 import { Overlay } from './overlay';
 
 configureApp('Student');
@@ -30,6 +34,10 @@ const canQuit = !app.isPackaged || process.env.CM_ALLOW_QUIT === '1';
 const preload = path.join(__dirname, 'preload.js');
 
 let config: StudentConfig | null = null;
+/** IT supplies the key, so the student's own setup window is never offered. */
+let managed = false;
+/** The teacher refused our class key (it was mistyped or the teacher changed it). */
+let keyRejected = false;
 let link: TeacherLink | null = null;
 let overlay: Overlay;
 let agent: BrowserWindow | null = null;
@@ -216,7 +224,8 @@ function trayIcon(color: [number, number, number] | null): Electron.NativeImage 
 }
 
 function statusLine(): string {
-  if (!config) return 'Not set up: no class key configured';
+  if (!config) return 'Not set up yet: join a class to start';
+  if (keyRejected) return `The teacher of ${config.room} didn't accept the class key`;
   if (!teacher) return `Looking for the teacher of ${config.room}…`;
   return `Connected to ${teacher.name} (${teacher.room})`;
 }
@@ -239,11 +248,158 @@ function updateTray(): void {
       click: () => void shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture'),
     });
   }
-  if (!config) items.push({ label: `Config file: ${systemConfigPath()}`, enabled: false });
+  if (canOfferSetup()) {
+    const label = !config ? 'Join a class…' : keyRejected ? 'Fix the class key…' : 'Change class…';
+    items.push({ type: 'separator' }, { label, click: openSetup });
+  } else if (managed && keyRejected) {
+    items.push({ label: 'Ask IT to update the class key on this computer', enabled: false });
+  }
   if (canQuit) items.push({ type: 'separator' }, { label: 'Quit (development only)', click: () => app.exit(0) });
 
   tray.setToolTip(`ClassMonitor: ${statusLine()}`);
   tray.setContextMenu(Menu.buildFromTemplate(items));
+}
+
+// ---------------------------------------------------------------- teacher link
+
+function startLink(next: StudentConfig): void {
+  if (link) {
+    link.removeAllListeners();
+    link.stop();
+    resetSession();
+  }
+  config = next;
+  keyRejected = false;
+  const id = studentId();
+  link = new TeacherLink(next, () => studentInfo(id));
+  link.on('message', onTeacherMessage);
+  link.on('disconnected', resetSession);
+  link.on('connected', ({ teacher: name, room }) => {
+    keyRejected = false;
+    confirmUserConfig();
+    sendSetupStatus({ state: 'connected', teacher: name, room });
+  });
+  link.on('failed', (_message, rejected) => {
+    if (!rejected) return;
+    keyRejected = true;
+    sendSetupStatus({ state: 'rejected' });
+    updateTray();
+  });
+  link.start();
+}
+
+// ---------------------------------------------------------------- first-run setup
+//
+// Without an IT-deployed config the student joins a class themselves: pick a
+// class heard on the network (or type a room name), enter the teacher's class
+// key. Once a teacher has accepted the settings they're locked in, so students
+// can't switch themselves out of a class; the window comes back only if the
+// teacher later rejects the key.
+
+let setup: BrowserWindow | null = null;
+let setupBeacons: Socket | null = null;
+let setupPrune: NodeJS.Timeout | null = null;
+let setupWait: NodeJS.Timeout | null = null;
+const discovered = new Map<string, DiscoveredClass & { seen: number }>();
+
+function canOfferSetup(): boolean {
+  if (managed) return false;
+  return !config || keyRejected || !readUserConfig(app.getPath('userData')).confirmed;
+}
+
+function confirmUserConfig(): void {
+  const dir = app.getPath('userData');
+  const saved = readUserConfig(dir);
+  if (managed || saved.confirmed || !saved.room || !saved.classKey) return;
+  saveUserConfig(dir, { room: saved.room, classKey: saved.classKey, teacherHost: saved.teacherHost, confirmed: true });
+}
+
+function openSetup(): void {
+  if (setup) {
+    setup.show();
+    setup.focus();
+    return;
+  }
+  if (!canOfferSetup()) return;
+  setup = new BrowserWindow({
+    width: 440,
+    height: 600,
+    useContentSize: true,
+    resizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    show: false,
+    title: 'Join your class',
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#15171c' : '#f5f6f8',
+    webPreferences: { preload, contextIsolation: true, sandbox: true },
+  });
+  setup.removeMenu();
+  setup.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  setup.webContents.on('will-navigate', (e) => e.preventDefault());
+  setup.webContents.on('did-finish-load', pushClasses);
+  setup.once('ready-to-show', () => {
+    setup?.show();
+    if (process.platform === 'darwin') app.focus({ steal: true });
+  });
+  setup.on('closed', () => {
+    setup = null;
+    setupBeacons?.close();
+    setupBeacons = null;
+    for (const timer of [setupPrune, setupWait]) if (timer) clearTimeout(timer);
+    setupPrune = setupWait = null;
+    discovered.clear();
+  });
+  void setup.loadFile(path.join(__dirname, 'setup.html'));
+
+  // List the classes whose teacher console is open on this network.
+  setupBeacons = watchBeacons((beacon, host) => {
+    const known = discovered.get(beacon.room);
+    // Keep the first address seen; a teacher with several network interfaces beacons on each.
+    discovered.set(beacon.room, { room: beacon.room, teacher: beacon.teacher, host: known?.host ?? host, seen: Date.now() });
+    if (!known) pushClasses();
+  });
+  setupPrune = setInterval(() => {
+    for (const [room, c] of discovered) if (Date.now() - c.seen > 7000) discovered.delete(room);
+    pushClasses();
+  }, 2000);
+}
+
+function pushClasses(): void {
+  const classes = [...discovered.values()]
+    .map(({ room, teacher: name, host }) => ({ room, teacher: name, host }))
+    .sort((a, b) => a.room.localeCompare(b.room));
+  setup?.webContents.send('student:setup-classes', classes);
+}
+
+function sendSetupStatus(status: SetupStatus): void {
+  if (!setup) return;
+  if (status.state !== 'connecting' && setupWait) {
+    clearTimeout(setupWait);
+    setupWait = null;
+  }
+  setup.webContents.send('student:setup-status', status);
+  if (status.state === 'connected') setTimeout(() => setup?.close(), 1800);
+}
+
+function joinClass(details: SetupDetails): void {
+  const room = String(details.room ?? '').trim() || 'Classroom';
+  const classKey = String(details.classKey ?? '').trim();
+  const teacherHost = String(details.teacherHost ?? '').trim() || undefined;
+  if (classKey.length < 8) throw new Error('Enter the class key from your teacher.');
+  if (room.length > 60) throw new Error('That room name is too long.');
+  if (teacherHost && !/^[\w.:-]{1,253}$/.test(teacherHost)) throw new Error('That teacher address doesn\'t look right.');
+
+  const dir = app.getPath('userData');
+  saveUserConfig(dir, { room, classKey, teacherHost, confirmed: false });
+  const next = loadStudentConfig(dir);
+  if (!next) throw new Error('Could not save the settings.');
+  startLink(next);
+  updateTray();
+  sendSetupStatus({ state: 'connecting', room });
+  setupWait = setTimeout(() => {
+    setupWait = null;
+    if (!link?.connected && !keyRejected) sendSetupStatus({ state: 'waiting', room });
+  }, 8000);
 }
 
 // ---------------------------------------------------------------- windows & IPC
@@ -275,9 +431,21 @@ function registerIpc(): void {
   ipcMain.on('student:broadcast-ready', (e, sessionId: string) => {
     if (fromOverlay(e) && sessionId === overlay.broadcastSession) link?.send({ type: 'broadcast-ready', sessionId });
   });
+
+  const fromSetup = (e: IpcMainEvent | IpcMainInvokeEvent) => setup !== null && e.sender === setup.webContents;
+  ipcMain.handle('student:setup-initial', (e) => {
+    if (!fromSetup(e)) throw new Error('unknown sender');
+    const saved = readUserConfig(app.getPath('userData'));
+    return { room: saved.room ?? '', classKey: saved.classKey ?? '', teacherHost: saved.teacherHost ?? '', platform: process.platform };
+  });
+  ipcMain.handle('student:setup-join', (e, details: SetupDetails) => {
+    if (!fromSetup(e) || managed) throw new Error('unknown sender');
+    joinClass(details);
+  });
+  ipcMain.on('student:setup-close', (e) => fromSetup(e) && setup?.close());
 }
 
-app.on('second-instance', () => tray?.popUpContextMenu());
+app.on('second-instance', () => (canOfferSetup() ? openSetup() : tray?.popUpContextMenu()));
 // No window to close and no menu: the agent runs until logout.
 app.on('window-all-closed', () => {});
 app.on('before-quit', (e) => {
@@ -300,16 +468,10 @@ app.whenReady().then(() => {
     globalShortcut.register('CommandOrControl+Alt+Shift+U', () => overlay.clear());
   }
 
-  config = loadStudentConfig(app.getPath('userData'));
-  if (config) {
-    const id = studentId();
-    link = new TeacherLink(config, () => studentInfo(id));
-    link.on('message', onTeacherMessage);
-    link.on('disconnected', resetSession);
-    link.start();
-    thumbnailLoop();
-  } else {
-    console.warn(`[student] no class key; create ${systemConfigPath()}`);
-  }
+  managed = isManagedConfig();
+  const saved = loadStudentConfig(app.getPath('userData'));
+  if (saved) startLink(saved);
+  else openSetup();
+  thumbnailLoop();
   updateTray();
 });

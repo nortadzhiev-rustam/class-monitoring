@@ -30,6 +30,7 @@ await build({
     'teacher/app': 'src/teacher/renderer/app.ts',
     'student/agent': 'src/student/renderer/agent.ts',
     'student/overlay': 'src/student/renderer/overlay.ts',
+    'student/setup': 'src/student/renderer/setup.ts',
   },
   outdir: 'dist',
 });

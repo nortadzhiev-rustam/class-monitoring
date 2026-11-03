@@ -42,12 +42,16 @@ On macOS, grant **Screen Recording** to Electron (and **Accessibility** for remo
 npm run test:e2e
 ```
 
-This starts both apps and checks discovery, thumbnails, lock/unlock, remote view, remote control (dry run: your mouse is never moved), broadcast, wrong-key rejection, and auto-unlock when the teacher disappears. Screenshots land in `tests/output/`.
+This starts both apps and checks discovery, thumbnails, lock/unlock, remote view, remote control (dry run: your mouse is never moved), broadcast, wrong-key rejection, first-run setup, and auto-unlock when the teacher disappears. Screenshots land in `tests/output/`.
 
 ## Deploying to a classroom
 
 1. **Teacher:** install ClassMonitor Teacher (`npm run dist:teacher`). On first run it generates a class key. Open **Class settings** to see it, change the room name, and copy the student config.
-2. **Students:** install ClassMonitor Student (`npm run dist:student`) and deploy the config file with your usual tools (GPO, Intune, Jamf):
+2. **Students:** install ClassMonitor Student (`npm run dist:student`). Then either:
+
+   **Let students join themselves.** On first launch the student app opens a **Join your class** window that lists the classes it can hear on the network. The student picks theirs and types the class key. Once a teacher has accepted the key the choice is locked in, so students can't switch themselves out of a class. The window only comes back if the teacher later rejects the key (for example after generating a new one).
+
+   **Or deploy the config file** with your usual tools (GPO, Intune, Jamf). This skips the window entirely and always wins over a student's own choice:
    - Windows: `C:\ProgramData\ClassMonitor\student.json`
    - macOS: `/Library/Application Support/ClassMonitor/student.json`
 

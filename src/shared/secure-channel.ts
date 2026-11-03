@@ -26,8 +26,9 @@ export const CLOSE_BAD_KEY = 4001;
 export const CLOSE_VERSION = 4002;
 export const CLOSE_REPLACED = 4003;
 
+/** Keys are case-insensitive so a typed "k7qf2-..." matches the generated "K7QF2-...". */
 export function deriveClassKey(passphrase: string): Buffer {
-  return scryptSync(passphrase.trim(), KDF_SALT, 32);
+  return scryptSync(passphrase.trim().toUpperCase(), KDF_SALT, 32);
 }
 
 /** A random, readable key such as "K7QF2-M9XRA-4TNWP-HB3ZD" (100 bits). */

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'">
+  <title>Join your class</title>
+  <link rel="stylesheet" href="setup.css">
+</head>
+<body>
+  <form id="form" novalidate>
+    <header>
+      <div class="mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
+      </div>
+      <h1>Join your class</h1>
+      <p>Pick your class and enter the class key. Your teacher can find it in ClassMonitor under <strong>Class settings</strong>.</p>
+    </header>
+
+    <fieldset>
+      <legend>Class</legend>
+      <div class="classes" id="classes" role="radiogroup" aria-label="Classes on this network"></div>
+      <p class="searching" id="searching"><span class="spinner" aria-hidden="true"></span>Looking for classes on this network…</p>
+      <details id="manual">
+        <summary>My class isn't listed</summary>
+        <label class="field">
+          <span>Room name</span>
+          <input id="room" maxlength="60" placeholder="Classroom" autocomplete="off">
+        </label>
+        <label class="field">
+          <span>Teacher's computer address <em>(optional)</em></span>
+          <input id="host" maxlength="253" placeholder="e.g. 10.0.4.20" autocomplete="off" spellcheck="false">
+        </label>
+      </details>
+    </fieldset>
+
+    <label class="field">
+      <span>Class key</span>
+      <input id="key" class="key" maxlength="200" placeholder="XXXXX-XXXXX-XXXXX-XXXXX" autocomplete="off" spellcheck="false" required>
+    </label>
+
+    <p class="status" id="status" role="status" hidden></p>
+
+    <p class="notice">After you join, your teacher can see this screen and lock it during class. The ClassMonitor icon in the menu bar or taskbar shows when they're connected.</p>
+
+    <footer>
+      <button class="btn" id="later" type="button">Later</button>
+      <button class="btn primary" id="join" type="submit">Join class</button>
+    </footer>
+  </form>
+
+  <script src="setup.js"></script>
+</body>
+</html>
