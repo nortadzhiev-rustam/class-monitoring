@@ -1,0 +1,32 @@
+# npm run dist:student  ->  release/student/
+appId: school.classmonitor.student
+productName: ClassMonitor Student
+directories:
+  output: release/student
+files:
+  - dist/student/**
+  - package.json
+extraMetadata:
+  main: dist/student/main.js
+
+mac:
+  category: public.app-category.education
+  target: pkg
+  extendInfo:
+    # Menu-bar agent: no Dock icon.
+    LSUIElement: true
+  extraResources:
+    - from: native-bin/darwin
+      to: native-bin/darwin
+
+win:
+  target: nsis
+  extraResources:
+    - from: native/windows
+      to: native/windows
+nsis:
+  # Silent, machine-wide install for deployment tools: "ClassMonitor Student Setup.exe /S"
+  oneClick: true
+  perMachine: true
+  # Opens UDP 47800 for teacher discovery beacons.
+  include: build/student-installer.nsh

@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; img-src 'self' blob:; media-src 'self' blob: mediastream:; style-src 'self'; script-src 'self'">
+  <title>ClassMonitor</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <svg class="sprite" aria-hidden="true">
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
+    <symbol id="i-unlock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.7-1.5"/></symbol>
+    <symbol id="i-screen" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-pointer" viewBox="0 0 24 24"><path d="M5 3l14 7.5-6.2 1.7L10 19z"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="6.5" height="6.5" rx="1"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1"/></symbol>
+  </svg>
+
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark"></span>ClassMonitor</div>
+    <button class="room" id="room" type="button" title="Class settings">
+      <span id="room-name">Classroom</span>
+      <span class="dot"></span>
+      <span id="count">0 online</span>
+    </button>
+    <div class="spacer"></div>
+    <label class="zoom" title="Thumbnail size">
+      <svg class="icon"><use href="#i-grid"/></svg>
+      <input id="zoom" type="range" min="200" max="520" step="20" value="300">
+    </label>
+    <div class="actions">
+      <button class="btn" id="lock-all" type="button"><svg class="icon"><use href="#i-lock"/></svg>Lock all</button>
+      <button class="btn" id="unlock-all" type="button"><svg class="icon"><use href="#i-unlock"/></svg>Unlock all</button>
+      <button class="btn primary" id="broadcast" type="button"><svg class="icon"><use href="#i-screen"/></svg><span>Show my screen</span></button>
+      <button class="btn icon-only" id="settings" type="button" title="Class settings"><svg class="icon"><use href="#i-settings"/></svg></button>
+    </div>
+  </header>
+
+  <div class="banner" id="banner" hidden>
+    <span class="live"></span>
+    <span id="banner-text">Showing your screen to all students</span>
+    <button class="btn small" id="banner-stop" type="button">Stop</button>
+  </div>
+
+  <main>
+    <section class="grid" id="grid" aria-label="Student screens"></section>
+    <section class="empty" id="empty">
+      <div class="empty-art"><svg class="icon"><use href="#i-screen"/></svg></div>
+      <h1>Waiting for students</h1>
+      <p>Student computers on this network join <strong id="empty-room"></strong> automatically when their agent has this class key:</p>
+      <code class="key" id="empty-key"></code>
+      <button class="btn" id="empty-settings" type="button">Set up student computers</button>
+    </section>
+  </main>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+
+  <template id="card-template">
+    <article class="card">
+      <div class="screen">
+        <img alt="">
+        <div class="placeholder">Waiting for screen…</div>
+        <span class="pill"></span>
+        <div class="hover-actions">
+          <button class="chip" data-action="view" type="button"><svg class="icon"><use href="#i-eye"/></svg>View</button>
+          <button class="chip" data-action="control" type="button"><svg class="icon"><use href="#i-pointer"/></svg>Control</button>
+          <button class="chip" data-action="lock" type="button"><svg class="icon"><use href="#i-lock"/></svg><span>Lock</span></button>
+        </div>
+      </div>
+      <footer>
+        <div class="who"><strong class="name"></strong><span class="meta"></span></div>
+        <span class="os"></span>
+      </footer>
+    </article>
+  </template>
+
+  <div class="viewer" id="viewer" hidden>
+    <header class="viewer-bar">
+      <button class="btn icon-only" id="viewer-close" type="button" title="Back to class (Esc)"><svg class="icon"><use href="#i-close"/></svg></button>
+      <div class="viewer-title"><strong id="viewer-name"></strong><span id="viewer-meta"></span></div>
+      <div class="spacer"></div>
+      <span class="control-hint" id="control-hint" hidden>Your mouse and keyboard control this computer</span>
+      <button class="btn" id="viewer-lock" type="button"><svg class="icon"><use href="#i-lock"/></svg><span>Lock</span></button>
+      <button class="btn primary" id="viewer-control" type="button"><svg class="icon"><use href="#i-pointer"/></svg><span>Take control</span></button>
+    </header>
+    <div class="stage" id="stage">
+      <video id="viewer-video" autoplay muted playsinline></video>
+      <div class="stage-status" id="stage-status">Connecting…</div>
+    </div>
+  </div>
+
+  <dialog id="lock-dialog">
+    <form method="dialog">
+      <h2 id="lock-title">Lock all screens</h2>
+      <label class="field">
+        <span>Message students will see</span>
+        <textarea id="lock-message" rows="2" maxlength="200">Eyes on the teacher, please.</textarea>
+      </label>
+      <menu>
+        <button class="btn" value="cancel" type="submit">Cancel</button>
+        <button class="btn primary" value="ok" type="submit" id="lock-confirm"><svg class="icon"><use href="#i-lock"/></svg>Lock</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="settings-dialog">
+    <form method="dialog" id="settings-form">
+      <h2>Class settings</h2>
+      <p class="muted">Student agents join a class when their room name and class key match these.</p>
+      <label class="field"><span>Room name</span><input id="set-room" required maxlength="60"></label>
+      <label class="field"><span>Teacher name shown to students</span><input id="set-name" maxlength="60"></label>
+      <label class="field">
+        <span>Class key</span>
+        <div class="key-row">
+          <input id="set-key" required minlength="8" spellcheck="false" autocomplete="off">
+          <button class="btn" id="copy-key" type="button">Copy</button>
+          <button class="btn" id="new-key" type="button">New key</button>
+        </div>
+      </label>
+      <div class="field">
+        <span>Student config file</span>
+        <p class="muted small">Put this in <code id="config-path-win"></code> on Windows or <code id="config-path-mac"></code> on macOS. Discovery is automatic on the same network; <code>teacherHost</code> is only needed if broadcasts are blocked.</p>
+        <pre id="set-snippet"></pre>
+      </div>
+      <p class="error" id="settings-error" hidden></p>
+      <menu>
+        <button class="btn" value="cancel" type="submit" formnovalidate>Cancel</button>
+        <button class="btn primary" value="save" type="submit">Save and reconnect</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>

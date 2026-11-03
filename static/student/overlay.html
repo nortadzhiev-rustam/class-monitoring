@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; media-src 'self' blob: mediastream:; style-src 'self'; script-src 'self'">
+  <title>ClassMonitor</title>
+  <link rel="stylesheet" href="overlay.css">
+</head>
+<body data-mode="lock" data-primary="true">
+  <section class="lock">
+    <div class="lock-badge">
+      <svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+    </div>
+    <h1 id="message">Your teacher has locked this screen.</h1>
+    <p>Locked by <span class="teacher-name">your teacher</span></p>
+  </section>
+
+  <section class="broadcast">
+    <video id="video" autoplay muted playsinline></video>
+    <div class="waiting" id="waiting">Connecting to <span class="teacher-name">your teacher</span>'s screen…</div>
+    <div class="badge"><span class="live"></span><span><span class="teacher-name">Teacher</span>'s screen</span></div>
+  </section>
+
+  <section class="secondary">
+    <p>Watching <span class="teacher-name">your teacher</span>'s screen on the main display</p>
+  </section>
+
+  <script src="overlay.js"></script>
+</body>
+</html>

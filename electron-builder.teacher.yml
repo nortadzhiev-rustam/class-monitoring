@@ -1,0 +1,22 @@
+# npm run dist:teacher  ->  release/teacher/
+appId: school.classmonitor.teacher
+productName: ClassMonitor Teacher
+directories:
+  output: release/teacher
+files:
+  - dist/teacher/**
+  - package.json
+extraMetadata:
+  main: dist/teacher/main.js
+
+mac:
+  category: public.app-category.education
+  target: dmg
+
+win:
+  target: nsis
+nsis:
+  oneClick: false
+  perMachine: true
+  # Opens TCP 47801 so student agents can connect.
+  include: build/teacher-installer.nsh

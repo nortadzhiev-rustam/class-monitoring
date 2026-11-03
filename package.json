@@ -1,0 +1,28 @@
+{
+  "name": "class-monitor",
+  "productName": "ClassMonitor",
+  "version": "0.1.0",
+  "private": true,
+  "description": "LAN classroom monitoring: a teacher console and a student agent for Windows and macOS.",
+  "main": "dist/teacher/main.js",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "build:native": "bash scripts/build-native.sh",
+    "typecheck": "tsc --noEmit",
+    "teacher": "npm run build && electron dist/teacher/main.js",
+    "student": "npm run build && electron dist/student/main.js",
+    "test:e2e": "npm run build && node tests/e2e.mjs",
+    "dist:teacher": "npm run build && npm run build:native && electron-builder --config electron-builder.teacher.yml",
+    "dist:student": "npm run build && npm run build:native && electron-builder --config electron-builder.student.yml"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "@types/ws": "^8.18.2",
+    "electron": "^45.2.1",
+    "electron-builder": "^26.18.0",
+    "esbuild": "^0.28.2",
+    "playwright-core": "^1.64.1",
+    "typescript": "^7.0.2",
+    "ws": "^8.22.1"
+  }
+}

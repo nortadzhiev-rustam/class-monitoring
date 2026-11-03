@@ -1,0 +1,98 @@
+:root {
+  --bg: #0b0d12;
+  --text: #f2f4f7;
+  --muted: #9aa1ad;
+  --accent: #5b8cff;
+  --live: #ff5d50;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  cursor: default;
+}
+
+section { display: none; position: fixed; inset: 0; }
+body[data-mode="lock"] .lock { display: flex; }
+body[data-mode="broadcast"][data-primary="true"] .broadcast { display: block; }
+body[data-mode="broadcast"][data-primary="false"] .secondary { display: flex; }
+
+.lock {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 32px;
+  text-align: center;
+  background:
+    radial-gradient(60% 50% at 50% 40%, rgb(91 140 255 / 16%), transparent 70%),
+    var(--bg);
+}
+.lock-badge {
+  display: grid;
+  place-items: center;
+  width: 96px;
+  height: 96px;
+  border-radius: 28px;
+  background: rgb(91 140 255 / 14%);
+  color: var(--accent);
+}
+.lock-badge svg {
+  width: 48px;
+  height: 48px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.lock h1 {
+  max-width: 900px;
+  margin: 0;
+  font-size: clamp(28px, 4vw, 56px);
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+.lock p { margin: 0; color: var(--muted); font-size: 18px; }
+
+.broadcast { background: #000; }
+.broadcast video { width: 100%; height: 100%; object-fit: contain; }
+.waiting {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+.waiting[hidden] { display: none; }
+.badge {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 55%);
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.85;
+}
+.live { width: 8px; height: 8px; border-radius: 50%; background: var(--live); }
+
+.secondary {
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+}
