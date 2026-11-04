@@ -14,9 +14,18 @@ export interface Student {
   online: boolean;
   status: StudentStatus;
   policy: Policy;
+  /** When the student's hand went up, for ordering the Help queue. */
+  handSince: number | null;
+  /** Chat messages from this student the teacher hasn't read. */
+  unread: number;
+  /** The student's answer to the running poll, as shown on the card. */
+  answer: string | null;
 }
 
-const OFFLINE_STATUS: StudentStatus = { locked: false, viewing: false, controlled: false };
+/** Fields the console tracks itself, not reported by the student. */
+type Extras = Pick<Student, 'unread' | 'answer'>;
+
+const OFFLINE_STATUS: StudentStatus = { locked: false, viewing: false, controlled: false, hand: null };
 
 const students = new Map<string, Student>();
 /** `id` is the student that changed, or null when many did. */
@@ -45,7 +54,7 @@ export function all(): Student[] {
 }
 
 function fromEntry(entry: RosterEntry): Student {
-  return { ...entry, online: false, status: OFFLINE_STATUS, policy: OPEN_POLICY };
+  return { ...entry, online: false, status: OFFLINE_STATUS, policy: OPEN_POLICY, handSince: null, unread: 0, answer: null };
 }
 
 export function load(roster: RosterEntry[], online: StudentSummary[]): void {
@@ -59,7 +68,10 @@ function setOnline(summary: StudentSummary, entry?: RosterEntry): void {
   const { info } = summary;
   const known = students.get(info.id) ?? (entry ? fromEntry(entry) : undefined);
   students.set(info.id, {
+    unread: 0,
+    answer: null,
     ...known,
+    handSince: summary.status.hand === null ? null : (known?.handSince ?? Date.now()),
     id: info.id,
     hostname: info.hostname,
     username: info.username,
@@ -80,14 +92,22 @@ export function joined(summary: StudentSummary, entry: RosterEntry): void {
 export function left(id: string): void {
   const s = students.get(id);
   if (!s) return;
-  students.set(id, { ...s, online: false, lastSeen: Date.now(), status: OFFLINE_STATUS });
+  students.set(id, { ...s, online: false, lastSeen: Date.now(), status: OFFLINE_STATUS, handSince: null });
   changed(id);
 }
 
 export function setStatus(id: string, status: StudentStatus): void {
   const s = students.get(id);
   if (!s) return;
-  students.set(id, { ...s, status });
+  const handSince = status.hand === null ? null : (s.handSince ?? Date.now());
+  students.set(id, { ...s, status, handSince });
+  changed(id);
+}
+
+export function patch(id: string, extras: Partial<Extras>): void {
+  const s = students.get(id);
+  if (!s) return;
+  students.set(id, { ...s, ...extras });
   changed(id);
 }
 

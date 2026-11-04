@@ -7,10 +7,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { configureApp, shareScreenWithoutPicker } from '../shared/electron-setup';
-import type { Platform, Policy, RtcSignal, StudentInfo, TeacherMessage } from '../shared/protocol';
+import { LIMITS, type Platform, type Policy, type RtcSignal, type StudentInfo, type TeacherMessage } from '../shared/protocol';
+import { initChat, openChat, receiveChat, refreshChat, resetChat } from './chat';
 import { isManagedConfig, loadStudentConfig, type StudentConfig } from './config';
 import { TeacherLink } from './connection';
+import { handNote, lowerHand } from './hand';
 import { Overlay } from './overlay';
+import { initPrompts, onPromptAction, removePrompt, removePrompts, showPrompt } from './prompts';
 import * as session from './session';
 import { canOfferSetup, confirmUserConfig, initSetup, openSetup, sendSetupStatus } from './setup';
 import { changed, onChange, send, state } from './state';
@@ -59,7 +62,7 @@ function studentInfo(id: string): StudentInfo {
 }
 
 function reportStatus(): void {
-  send({ type: 'status', locked: overlay.locked, viewing: session.viewing(), controlled: session.controlled() });
+  send({ type: 'status', locked: overlay.locked, viewing: session.viewing(), controlled: session.controlled(), hand: handNote() });
 }
 
 // ---------------------------------------------------------------- teacher commands
@@ -70,8 +73,42 @@ function applyPolicy(policy: Policy): void {
   else if (overlay.locked) overlay.unlock();
   if (policy.broadcast) overlay.startBroadcast(policy.broadcast);
   else if (overlay.broadcastSession) overlay.stopBroadcast();
+  showPoll(policy.poll);
   changed();
 }
+
+// ---------------------------------------------------------------- polls
+
+/** The student's answer per poll, so it survives a reconnect mid-poll. */
+const pollAnswers = new Map<string, number>();
+
+function showPoll(poll: Policy['poll']): void {
+  removePrompts((c) => c.kind === 'poll' && c.pollId !== poll?.pollId);
+  if (!poll) return;
+  const choices = poll.choices.slice(0, LIMITS.pollChoices).map((c) => String(c).slice(0, LIMITS.pollChoice));
+  const answer = pollAnswers.get(poll.pollId) ?? null;
+  showPrompt({
+    id: `poll-${poll.pollId}`,
+    kind: 'poll',
+    pollId: poll.pollId,
+    from: state.teacher?.name ?? 'Your teacher',
+    question: String(poll.question).slice(0, LIMITS.pollQuestion),
+    choices,
+    answer,
+  });
+  if (answer !== null) send({ type: 'poll-answer', pollId: poll.pollId, choice: answer });
+}
+
+onPromptAction('poll', (card, action, value) => {
+  if (card.kind !== 'poll' || action !== 'answer' || value === undefined || !card.choices[value]) return;
+  pollAnswers.set(card.pollId, value);
+  showPrompt({ ...card, answer: value });
+  send({ type: 'poll-answer', pollId: card.pollId, choice: value });
+});
+
+onPromptAction('message', (card, action) => {
+  if (action === 'dismiss') removePrompt(card.id);
+});
 
 function onTeacherMessage(msg: TeacherMessage): void {
   switch (msg.type) {
@@ -102,6 +139,21 @@ function onTeacherMessage(msg: TeacherMessage): void {
       if (session.owns(msg.sessionId)) session.relaySignal(msg.sessionId, msg.signal);
       else overlay.sendSignal(msg.sessionId, msg.signal);
       break;
+    case 'message':
+      showPrompt({
+        id: `message-${String(msg.id).slice(0, 64)}`,
+        kind: 'message',
+        from: state.teacher?.name ?? 'Your teacher',
+        text: String(msg.text).slice(0, LIMITS.message),
+        at: Date.now(),
+      });
+      break;
+    case 'chat':
+      receiveChat(msg.id, msg.text);
+      break;
+    case 'hand-clear':
+      lowerHand();
+      break;
   }
 }
 
@@ -109,6 +161,7 @@ function onTeacherMessage(msg: TeacherMessage): void {
 function resetSession(): void {
   session.endAll();
   overlay.clear();
+  removePrompts((c) => c.kind === 'poll');
   state.teacher = null;
   changed();
 }
@@ -118,6 +171,8 @@ function startLink(next: StudentConfig): void {
     state.link.removeAllListeners();
     state.link.stop();
     resetSession();
+    resetChat();
+    lowerHand();
   }
   state.config = next;
   state.problem = null;
@@ -160,7 +215,11 @@ function registerIpc(): void {
   });
 }
 
-app.on('second-instance', () => (canOfferSetup() ? openSetup() : popUpTray()));
+app.on('second-instance', () => {
+  if (canOfferSetup()) openSetup();
+  else if (state.teacher) openChat();
+  else popUpTray();
+});
 // No window to close and no menu: the agent runs until logout.
 app.on('window-all-closed', () => {});
 app.on('before-quit', (e) => {
@@ -175,12 +234,15 @@ app.whenReady().then(() => {
 
   overlay = new Overlay(preload);
   registerIpc();
+  initPrompts(preload);
+  initChat(preload);
   initSetup({ preload, startLink });
   session.createAgentWindow(preload);
   createTray();
   onChange(() => {
     reportStatus();
     updateTray();
+    refreshChat();
   });
 
   if (!app.isPackaged) {

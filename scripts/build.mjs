@@ -31,6 +31,8 @@ await build({
     'student/agent': 'src/student/renderer/agent.ts',
     'student/overlay': 'src/student/renderer/overlay.ts',
     'student/setup': 'src/student/renderer/setup.ts',
+    'student/prompts': 'src/student/renderer/prompts.ts',
+    'student/chat': 'src/student/renderer/chat.ts',
   },
   outdir: 'dist',
 });

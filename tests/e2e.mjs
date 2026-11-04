@@ -22,6 +22,8 @@ const base = {
   CM_PORT: '47811',
   CM_OVERLAY_WINDOWED: '1',
   CM_INPUT_DRY_RUN: '1',
+  // No desktop notifications or Dock bouncing while the test runs.
+  CM_QUIET: '1',
 };
 
 let failures = 0;
@@ -36,6 +38,7 @@ async function step(name, fn, { soft = false } = {}) {
   }
 }
 
+const pageOf = (app, file) => app.windows().find((p) => p.url().endsWith(file));
 const overlayPages = (app) => app.windows().filter((p) => p.url().endsWith('overlay.html'));
 /** With several monitors only the primary display's overlay plays the broadcast. */
 async function primaryOverlay(app) {
@@ -169,6 +172,63 @@ await step('broadcast shows the teacher screen on the student', async () => {
   await overlay.screenshot({ path: path.join(out, '4-broadcast-on-student.png') });
   await page.click('#broadcast');
   await waitFor(async () => overlayPages(student).length === 0);
+});
+
+await step('a message pops up on the student', async () => {
+  await page.click('#message');
+  await page.fill('#message-text', 'Five minutes left');
+  await page.click('#message-send');
+  await page.waitForSelector('.toast.info:has-text("Message sent to 1 student")', { timeout: 5000 });
+  let prompts = null;
+  await waitFor(async () => (prompts = pageOf(student, 'prompts.html')));
+  await prompts.waitForSelector('.card.message:has-text("Five minutes left")', { timeout: 10_000 });
+  await prompts.screenshot({ path: path.join(out, '7-message-on-student.png') });
+  await prompts.click('.card.message .btn');
+  await prompts.waitForSelector('.card.message', { state: 'detached' });
+});
+
+await step('teacher and student chat both ways', async () => {
+  await page.hover(`${card('student')} .screen`);
+  await page.click(`${card('student')} [data-action="chat"]`);
+  await page.fill('#chat-text', 'How is it going?');
+  await page.press('#chat-text', 'Enter');
+  let chat = null;
+  await waitFor(async () => (chat = pageOf(student, 'chat.html')));
+  await chat.waitForSelector('.line.teacher:has-text("How is it going?")', { timeout: 10_000 });
+  await chat.fill('#text', 'Stuck on question 3');
+  await chat.press('#text', 'Enter');
+  await page.waitForSelector('#chat-lines .line.student:has-text("Stuck on question 3")', { timeout: 10_000 });
+  await chat.screenshot({ path: path.join(out, '8-chat-on-student.png') });
+});
+
+await step('a raised hand reaches the help queue until the teacher clears it', async () => {
+  const chat = pageOf(student, 'chat.html');
+  await chat.click('#hand');
+  await page.waitForSelector(`${card('student')} .pill.hand`, { timeout: 10_000 });
+  await page.click('.tab[data-tab="help"]');
+  await page.waitForSelector('#help-queue li', { timeout: 5000 });
+  await pageOf(student, 'prompts.html').waitForSelector('.card.hand', { timeout: 5000 });
+  await page.screenshot({ path: path.join(out, '9-help-queue.png') });
+  await page.click('#help-queue li .btn.primary');
+  await page.waitForSelector(`${card('student')} .pill.hand`, { state: 'detached', timeout: 10_000 });
+  await chat.waitForFunction(() => document.getElementById('hand')?.textContent === 'Raise hand');
+});
+
+await step('a poll collects answers live', async () => {
+  await page.click('#poll');
+  await page.fill('#poll-text', 'Which answer is right?');
+  await page.click('[data-preset="A|B|C|D"]');
+  await page.click('#poll-form button[value="start"]');
+  const prompts = pageOf(student, 'prompts.html');
+  await prompts.waitForSelector('.card.poll:has-text("Which answer is right?")', { timeout: 10_000 });
+  await prompts.click('.card.poll .choice:has-text("B")');
+  await page.waitForSelector('#poll-count:has-text("1 of 1 student answered")', { timeout: 10_000 });
+  await page.waitForSelector(`${card('student')} .pill.answer:has-text("B")`);
+  await prompts.screenshot({ path: path.join(out, '10-poll-on-student.png') });
+  await page.screenshot({ path: path.join(out, '11-poll-results.png') });
+  await page.click('#poll-end');
+  await prompts.waitForSelector('.card.poll', { state: 'detached', timeout: 10_000 });
+  await page.waitForSelector('#poll-state:has-text("Poll ended")');
 });
 
 await step('a student with the wrong class key is refused', async () => {

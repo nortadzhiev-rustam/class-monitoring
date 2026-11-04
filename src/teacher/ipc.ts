@@ -1,11 +1,20 @@
 // Types shared by the teacher's main process, preload and renderer.
 
-import type { InputEvent, Platform, Policy, RtcSignal, StudentInfo } from '../shared/protocol';
+import type { InputEvent, Platform, Policy, Poll, RtcSignal, StudentInfo } from '../shared/protocol';
 
 export interface StudentStatus {
   locked: boolean;
   viewing: boolean;
   controlled: boolean;
+  /** Help note while the student's hand is raised ('' for no note), else null. */
+  hand: string | null;
+}
+
+export interface ChatMessage {
+  id: string;
+  from: 'teacher' | 'student';
+  text: string;
+  at: number;
 }
 
 export interface StudentSummary {
@@ -60,7 +69,9 @@ export type TeacherEvent =
   | { type: 'broadcast-ready'; id: string; sessionId: string }
   | { type: 'student-error'; id: string; sessionId?: string; message: string }
   /** A computer tried to join but runs a different ClassMonitor version. */
-  | { type: 'version-mismatch'; address: string };
+  | { type: 'version-mismatch'; address: string }
+  | { type: 'chat'; id: string; message: ChatMessage }
+  | { type: 'poll-answer'; id: string; pollId: string; choice: number };
 
 export interface TeacherApi {
   state(): Promise<TeacherState>;
@@ -78,5 +89,14 @@ export interface TeacherApi {
   broadcastStart(target: Target, sessionId: string): void;
   broadcastStop(): void;
   signal(id: string, sessionId: string, signal: RtcSignal): void;
+  /** Pops up a message on the targets' screens; resolves to how many received it. */
+  message(target: Target, text: string): Promise<number>;
+  /** Sends a chat message; resolves to the message as sent (for the transcript). */
+  chat(id: string, text: string): Promise<ChatMessage>;
+  handClear(id: string): void;
+  pollStart(target: Target, question: string, choices: string[]): Promise<Poll>;
+  pollEnd(): void;
+  /** If the console isn't in front: a desktop notification plus a Dock bounce / taskbar flash. */
+  attention(title: string, body?: string): void;
   onEvent(listener: (event: TeacherEvent) => void): void;
 }

@@ -17,6 +17,13 @@
     <symbol id="i-pointer" viewBox="0 0 24 24"><path d="M5 3l14 7.5-6.2 1.7L10 19z"/></symbol>
     <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
     <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-message" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5h12v8H8l-4 3z"/><path d="M8 16v1h8l4 3V9h-2"/></symbol>
+    <symbol id="i-poll" viewBox="0 0 24 24"><path d="M5 20V11M12 20V5M19 20v-6"/></symbol>
+    <symbol id="i-hand" viewBox="0 0 24 24"><path d="M8 13V6.5a1.5 1.5 0 0 1 3 0V12M11 11V4.5a1.5 1.5 0 0 1 3 0V11M14 11V6a1.5 1.5 0 0 1 3 0v8a6 6 0 0 1-6 6h-1a5 5 0 0 1-4-2l-3-4a1.5 1.5 0 0 1 2.3-1.9L8 14"/></symbol>
+    <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
     <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="6.5" height="6.5" rx="1"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1"/></symbol>
   </svg>
 
@@ -37,6 +44,10 @@
       <input id="zoom" type="range" min="200" max="520" step="20" value="300">
     </label>
     <button class="btn icon-only" id="settings" type="button" title="Class settings"><svg class="icon"><use href="#i-settings"/></svg></button>
+    <button class="btn icon-only panel-toggle" id="panel-toggle" type="button" title="Help, chat and polls">
+      <svg class="icon"><use href="#i-panel"/></svg>
+      <span class="count" id="panel-count" hidden></span>
+    </button>
   </header>
 
   <div class="viewbar">
@@ -56,6 +67,9 @@
     <button class="btn" id="lock" type="button"><svg class="icon"><use href="#i-lock"/></svg>Lock</button>
     <button class="btn" id="unlock" type="button"><svg class="icon"><use href="#i-unlock"/></svg>Unlock</button>
     <button class="btn primary" id="broadcast" type="button"><svg class="icon"><use href="#i-screen"/></svg><span>Show my screen</span></button>
+    <span class="divider"></span>
+    <button class="btn" id="message" type="button"><svg class="icon"><use href="#i-message"/></svg>Message</button>
+    <button class="btn" id="poll" type="button"><svg class="icon"><use href="#i-poll"/></svg>Poll</button>
   </div>
 
   <div class="banner" id="banner" hidden>
@@ -64,16 +78,67 @@
     <button class="btn small" id="banner-stop" type="button">Stop</button>
   </div>
 
-  <main>
-    <section class="grid" id="grid" aria-label="Student screens"></section>
-    <section class="empty" id="empty">
-      <div class="empty-art"><svg class="icon"><use href="#i-screen"/></svg></div>
-      <h1>Waiting for students</h1>
-      <p>Student computers on this network join <strong id="empty-room"></strong> automatically when their agent has this class key:</p>
-      <code class="key" id="empty-key"></code>
-      <button class="btn" id="empty-settings" type="button">Set up student computers</button>
-    </section>
-  </main>
+  <div class="workspace">
+    <main>
+      <section class="grid" id="grid" aria-label="Student screens"></section>
+      <section class="empty" id="empty">
+        <div class="empty-art"><svg class="icon"><use href="#i-screen"/></svg></div>
+        <h1>Waiting for students</h1>
+        <p>Student computers on this network join <strong id="empty-room"></strong> automatically when their agent has this class key:</p>
+        <code class="key" id="empty-key"></code>
+        <button class="btn" id="empty-settings" type="button">Set up student computers</button>
+      </section>
+    </main>
+
+    <aside class="panel" id="panel" hidden aria-label="Help, chat and polls">
+      <header class="panel-head">
+        <nav class="tabs" role="tablist">
+          <button class="tab" type="button" role="tab" data-tab="help">Help <span class="count" hidden></span></button>
+          <button class="tab" type="button" role="tab" data-tab="chat">Chat <span class="count" hidden></span></button>
+          <button class="tab" type="button" role="tab" data-tab="poll">Poll <span class="count" hidden></span></button>
+        </nav>
+        <button class="btn icon-only small" id="panel-close" type="button" title="Close panel"><svg class="icon"><use href="#i-close"/></svg></button>
+      </header>
+
+      <section class="tab-body" data-tab="help" role="tabpanel">
+        <ol class="queue" id="help-queue"></ol>
+        <p class="panel-empty" id="help-empty">No raised hands. Students raise a hand from the ClassMonitor icon in their menu bar or taskbar.</p>
+      </section>
+
+      <section class="tab-body" data-tab="chat" role="tabpanel">
+        <ul class="conversations" id="chat-list"></ul>
+        <p class="panel-empty" id="chat-empty">No conversations yet. Use <strong>Chat</strong> on a student's card to start one.</p>
+        <div class="thread" id="chat-thread" hidden>
+          <header class="thread-head">
+            <button class="btn icon-only small" id="chat-back" type="button" title="All conversations"><svg class="icon"><use href="#i-back"/></svg></button>
+            <strong id="chat-with"></strong>
+          </header>
+          <div class="lines" id="chat-lines"></div>
+          <form class="composer" id="chat-form">
+            <textarea id="chat-text" rows="2" maxlength="2000" placeholder="Write a message…" aria-label="Message"></textarea>
+            <button class="btn primary" type="submit">Send</button>
+          </form>
+        </div>
+      </section>
+
+      <section class="tab-body" data-tab="poll" role="tabpanel">
+        <div id="poll-results" hidden>
+          <p class="poll-state" id="poll-state"></p>
+          <h3 class="poll-question" id="poll-question"></h3>
+          <ol class="bars" id="poll-bars"></ol>
+          <p class="muted small" id="poll-count"></p>
+          <div class="poll-actions">
+            <button class="btn" id="poll-copy" type="button">Copy results</button>
+            <button class="btn" id="poll-end" type="button">End poll</button>
+          </div>
+        </div>
+        <div class="panel-empty" id="poll-empty">
+          <p>Ask a quick question and see answers come in live.</p>
+          <button class="btn primary" id="poll-new" type="button"><svg class="icon"><use href="#i-plus"/></svg>New poll</button>
+        </div>
+      </section>
+    </aside>
+  </div>
 
   <div class="toasts" id="toasts" aria-live="polite"></div>
 
@@ -83,11 +148,12 @@
         <img alt="">
         <div class="placeholder"></div>
         <button class="select" type="button" aria-label="Select"><svg class="icon"><use href="#i-check"/></svg></button>
-        <div class="badges"><span class="pill"></span></div>
+        <div class="badges"></div>
         <div class="hover-actions online-only">
           <button class="chip" data-action="view" type="button"><svg class="icon"><use href="#i-eye"/></svg>View</button>
           <button class="chip" data-action="control" type="button"><svg class="icon"><use href="#i-pointer"/></svg>Control</button>
           <button class="chip" data-action="lock" type="button"><svg class="icon"><use href="#i-lock"/></svg><span>Lock</span></button>
+          <button class="chip" data-action="chat" type="button"><svg class="icon"><use href="#i-chat"/></svg>Chat</button>
         </div>
         <div class="hover-actions offline-only">
           <button class="chip" data-action="forget" type="button"><svg class="icon"><use href="#i-close"/></svg>Forget</button>
@@ -125,6 +191,46 @@
       <menu>
         <button class="btn" value="cancel" type="submit">Cancel</button>
         <button class="btn primary" value="ok" type="submit" id="lock-confirm"><svg class="icon"><use href="#i-lock"/></svg>Lock</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="message-dialog">
+    <form method="dialog">
+      <h2 id="message-title">Message everyone</h2>
+      <label class="field">
+        <span>Students see this in a pop-up until they click OK</span>
+        <textarea id="message-text" rows="4" maxlength="2000" placeholder="e.g. Save your work, we finish in 5 minutes."></textarea>
+      </label>
+      <menu>
+        <button class="btn" value="cancel" type="submit">Cancel</button>
+        <button class="btn primary" value="ok" type="submit" id="message-send"><svg class="icon"><use href="#i-message"/></svg>Send</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="poll-dialog">
+    <form method="dialog" id="poll-form">
+      <h2 id="poll-title">Poll everyone</h2>
+      <label class="field">
+        <span>Question</span>
+        <input id="poll-text" maxlength="300" placeholder="e.g. Have you finished question 3?">
+      </label>
+      <div class="field">
+        <span>Answers</span>
+        <div class="presets" id="poll-presets">
+          <button class="chip-btn" type="button" data-preset="Yes|No">Yes / No</button>
+          <button class="chip-btn" type="button" data-preset="Got it|Not sure|Lost">Got it / Not sure / Lost</button>
+          <button class="chip-btn" type="button" data-preset="A|B|C|D">A / B / C / D</button>
+          <button class="chip-btn" type="button" data-preset="True|False">True / False</button>
+        </div>
+        <ol class="choice-inputs" id="poll-choices"></ol>
+        <button class="link" id="poll-add" type="button">+ Add answer</button>
+      </div>
+      <p class="error" id="poll-error" hidden></p>
+      <menu>
+        <button class="btn" value="cancel" type="submit" formnovalidate>Cancel</button>
+        <button class="btn primary" value="start" type="submit"><svg class="icon"><use href="#i-poll"/></svg>Start poll</button>
       </menu>
     </form>
   </dialog>

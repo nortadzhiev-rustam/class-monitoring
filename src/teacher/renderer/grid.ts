@@ -9,6 +9,7 @@ export interface CardActions {
   view(s: Student, control: boolean): void;
   toggleLock(s: Student): void;
   forget(s: Student): void;
+  chat(s: Student): void;
 }
 
 interface Card {
@@ -91,6 +92,7 @@ function createCard(id: string): Card {
     const action = clicked.closest<HTMLElement>('[data-action]')?.dataset.action;
     if (action === 'lock') actions.toggleLock(s);
     else if (action === 'forget') actions.forget(s);
+    else if (action === 'chat') actions.chat(s);
     else if (s.online && clicked.closest('.screen')) actions.view(s, action === 'control');
   });
   // Shift-click shouldn't also select the page's text.
@@ -120,7 +122,7 @@ function renderCard(id: string): void {
   el.querySelector('.meta')!.textContent = [s.username, s.address].filter(Boolean).join(' · ');
   el.querySelector('.os')!.textContent = OS_LABEL[s.platform] ?? s.platform;
   el.querySelector('.placeholder')!.textContent = s.online ? 'Waiting for screen…' : `Offline · last seen ${timeAgo(s.lastSeen)}`;
-  el.querySelector('.pill')!.textContent = !s.online ? '' : s.status.controlled ? 'Being controlled' : s.status.locked ? 'Locked' : '';
+  el.querySelector('.badges')!.replaceChildren(...badges(s));
 
   const locked = s.policy.lock !== null;
   const lockChip = el.querySelector('[data-action="lock"]')!;
@@ -129,6 +131,22 @@ function renderCard(id: string): void {
 
   if (isNew) place(card, id);
   updateCounts();
+}
+
+function pill(text: string, kind = ''): HTMLElement {
+  return Object.assign(document.createElement('span'), { className: `pill ${kind}`.trim(), textContent: text });
+}
+
+/** Status pills on the thumbnail: what the teacher should notice at a glance. */
+function badges(s: Student): HTMLElement[] {
+  if (!s.online) return [];
+  const result: HTMLElement[] = [];
+  if (s.status.hand !== null) result.push(pill('✋ Needs help', 'hand'));
+  if (s.status.controlled) result.push(pill('Being controlled', 'chat'));
+  else if (s.status.locked) result.push(pill('Locked'));
+  if (s.unread) result.push(pill(`${s.unread} new message${s.unread === 1 ? '' : 's'}`, 'chat'));
+  if (s.answer !== null) result.push(pill(s.answer, 'answer'));
+  return result;
 }
 
 function renderAll(): void {

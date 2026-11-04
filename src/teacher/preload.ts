@@ -16,6 +16,12 @@ const api: TeacherApi = {
   broadcastStart: (target, sessionId) => ipcRenderer.send('teacher:broadcast-start', target, sessionId),
   broadcastStop: () => ipcRenderer.send('teacher:broadcast-stop'),
   signal: (id, sessionId, signal) => ipcRenderer.send('teacher:signal', id, sessionId, signal),
+  message: (target, text) => ipcRenderer.invoke('teacher:message', target, text),
+  chat: (id, text) => ipcRenderer.invoke('teacher:chat', id, text),
+  handClear: (id) => ipcRenderer.send('teacher:hand-clear', id),
+  pollStart: (target, question, choices) => ipcRenderer.invoke('teacher:poll-start', target, question, choices),
+  pollEnd: () => ipcRenderer.send('teacher:poll-end'),
+  attention: (title, body) => ipcRenderer.send('teacher:attention', title, body),
   onEvent: (listener) => {
     ipcRenderer.on('teacher:event', (_e, event: TeacherEvent) => listener(event));
   },

@@ -3,9 +3,12 @@
 
 import type { TeacherEvent, TeacherState } from '../ipc';
 import * as broadcast from './broadcast';
+import * as chat from './chat';
 import * as dialogs from './dialogs';
-import { $, api, toast } from './dom';
+import { $, api, errorText, plural, toast } from './dom';
 import * as grid from './grid';
+import * as help from './help';
+import * as poll from './poll';
 import * as store from './store';
 import type { Student } from './store';
 import * as targets from './targets';
@@ -26,8 +29,12 @@ grid.init({
     api.forget(s.id);
     store.forget(s.id);
   },
+  chat: (s) => chat.openThread(s.id),
 });
 viewer.init({ toggleLock, dialogOpen: dialogs.anyOpen });
+help.init({ view: (s) => viewer.open(s, false), chat: (s) => chat.openThread(s.id) });
+chat.init();
+poll.init({ newPoll: () => poll.openDialog(targets.current()) });
 
 // ---------------------------------------------------------------- toolbar
 
@@ -37,6 +44,19 @@ $('#lock').addEventListener('click', () => {
 });
 $('#unlock').addEventListener('click', () => api.unlock(targets.current().target));
 $('#broadcast').addEventListener('click', () => (broadcast.active() ? broadcast.stop() : void broadcast.start(targets.current())));
+$('#message').addEventListener('click', () => {
+  const to = targets.current();
+  dialogs.askMessage(to, async (text) => {
+    try {
+      const sent = await api.message(to.target, text);
+      if (sent) toast(`Message sent to ${plural(sent, 'student')}.`, 'info');
+      else toast('Nobody you picked is online, so the message was not sent.');
+    } catch (err) {
+      toast(errorText(err));
+    }
+  });
+});
+$('#poll').addEventListener('click', () => poll.openDialog(targets.current()));
 
 $('#select-all').addEventListener('click', () => targets.selectAll(grid.visibleIds()));
 $('#select-none').addEventListener('click', () => targets.clear());
@@ -106,6 +126,12 @@ api.onEvent((event: TeacherEvent) => {
       viewer.sessionFailed(event.sessionId);
       break;
     }
+    case 'chat':
+      chat.receive(event.id, event.message);
+      break;
+    case 'poll-answer':
+      poll.receive(event.id, event.pollId, event.choice);
+      break;
     case 'version-mismatch':
       if (versionWarned.has(event.address)) break;
       versionWarned.add(event.address);

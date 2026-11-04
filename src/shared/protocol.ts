@@ -43,9 +43,26 @@ export interface Policy {
   lock: string | null;
   /** Teacher's screen-broadcast session the student should show, or null. */
   broadcast: string | null;
+  /** The poll the student should be answering, or null. */
+  poll: Poll | null;
 }
 
-export const OPEN_POLICY: Policy = { lock: null, broadcast: null };
+export const OPEN_POLICY: Policy = { lock: null, broadcast: null, poll: null };
+
+export interface Poll {
+  pollId: string;
+  question: string;
+  choices: string[];
+}
+
+export const LIMITS = {
+  message: 2000,
+  chat: 2000,
+  handNote: 200,
+  pollQuestion: 300,
+  pollChoice: 60,
+  pollChoices: 6,
+} as const;
 
 export type RtcSignal =
   | { kind: 'offer' | 'answer'; sdp: string }
@@ -69,13 +86,20 @@ export type TeacherMessage =
   | { type: 'view-stop'; sessionId: string }
   | { type: 'control'; sessionId: string; enabled: boolean; teacherPlatform: Platform }
   | { type: 'input'; sessionId: string; events: InputEvent[] }
-  | { type: 'signal'; sessionId: string; signal: RtcSignal };
+  | { type: 'signal'; sessionId: string; signal: RtcSignal }
+  | { type: 'message'; id: string; text: string }
+  | { type: 'chat'; id: string; text: string; at: number }
+  /** The teacher has dealt with the student's raised hand. */
+  | { type: 'hand-clear' };
 
 export type StudentMessage =
   | { type: 'info'; info: StudentInfo }
-  | { type: 'status'; locked: boolean; viewing: boolean; controlled: boolean }
+  /** `hand` is the help note while the student's hand is raised ('' for no note), else null. */
+  | { type: 'status'; locked: boolean; viewing: boolean; controlled: boolean; hand: string | null }
   /** Sent with a JPEG payload. */
   | { type: 'thumb'; width: number; height: number }
   | { type: 'broadcast-ready'; sessionId: string }
   | { type: 'signal'; sessionId: string; signal: RtcSignal }
+  | { type: 'chat'; id: string; text: string; at: number }
+  | { type: 'poll-answer'; pollId: string; choice: number }
   | { type: 'error'; sessionId?: string; message: string };

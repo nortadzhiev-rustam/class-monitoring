@@ -12,9 +12,9 @@ export const $ = <T extends HTMLElement = HTMLElement>(selector: string) => docu
 
 export const OS_LABEL: Record<string, string> = { darwin: 'macOS', win32: 'Windows', linux: 'Linux' };
 
-export function toast(message: string): void {
+export function toast(message: string, kind: 'error' | 'info' = 'error'): void {
   const el = document.createElement('div');
-  el.className = 'toast';
+  el.className = `toast ${kind}`;
   el.textContent = message;
   $('#toasts').append(el);
   setTimeout(() => el.remove(), 7000);

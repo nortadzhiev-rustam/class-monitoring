@@ -2,6 +2,8 @@
 // connected, watching or controlling.
 
 import { app, Menu, nativeImage, shell, systemPreferences, Tray } from 'electron';
+import { openChat } from './chat';
+import { handNote, lowerHand, raiseHand } from './hand';
 import { controlled, viewing } from './session';
 import { canOfferSetup, openSetup } from './setup';
 import { state } from './state';
@@ -65,6 +67,14 @@ export function updateTray(): void {
   if (connected) items.push({ label: 'Your teacher can see this screen', enabled: false });
   if (viewing()) items.push({ label: 'Your teacher is watching this screen now', enabled: false });
   if (controlled()) items.push({ label: 'Your teacher is controlling this computer', enabled: false });
+  if (connected) {
+    const raised = handNote() !== null;
+    items.push(
+      { type: 'separator' },
+      { label: raised ? 'Lower hand' : 'Raise hand', click: () => (raised ? lowerHand() : raiseHand()) },
+      { label: 'Chat with teacher…', click: () => openChat() },
+    );
+  }
   if (process.platform === 'darwin' && systemPreferences.getMediaAccessStatus('screen') !== 'granted') {
     items.push({ type: 'separator' }, {
       label: 'Allow Screen Recording…',

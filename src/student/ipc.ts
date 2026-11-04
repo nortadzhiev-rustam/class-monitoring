@@ -35,6 +35,25 @@ export type SetupStatus =
   | { state: 'rejected' }
   | { state: 'waiting'; room: string };
 
+/** One item in the always-on-top prompt window. */
+export type PromptCard =
+  | { id: string; kind: 'message'; from: string; text: string; at: number }
+  | { id: string; kind: 'poll'; pollId: string; from: string; question: string; choices: string[]; answer: number | null }
+  | { id: string; kind: 'hand' };
+
+export interface ChatLine {
+  id: string;
+  from: 'teacher' | 'me';
+  text: string;
+  at: number;
+}
+
+export interface ChatState {
+  teacher: string | null;
+  lines: ChatLine[];
+  handRaised: boolean;
+}
+
 export interface StudentApi {
   signal(sessionId: string, signal: RtcSignal): void;
   onSignal(listener: (sessionId: string, signal: RtcSignal) => void): void;
@@ -54,4 +73,17 @@ export interface StudentApi {
   setupClose(): void;
   onSetupClasses(listener: (classes: DiscoveredClass[]) => void): void;
   onSetupStatus(listener: (status: SetupStatus) => void): void;
+
+  // Prompt window
+  promptsReady(): void;
+  onPrompts(listener: (cards: PromptCard[]) => void): void;
+  promptAction(id: string, action: string, value?: number): void;
+  /** Reports the content height so the window can fit it. */
+  promptsSize(height: number): void;
+
+  // Chat window
+  chatReady(): void;
+  onChat(listener: (state: ChatState) => void): void;
+  chatSend(text: string): void;
+  setHand(raised: boolean): void;
 }

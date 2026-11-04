@@ -1,11 +1,12 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeTheme, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeTheme, Notification, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { configureApp, shareScreenWithoutPicker } from '../shared/electron-setup';
-import { CONTROL_PORT, type InputEvent, type Platform, type RtcSignal } from '../shared/protocol';
+import { randomUUID } from 'node:crypto';
+import { CONTROL_PORT, LIMITS, type InputEvent, type Platform, type Poll, type RtcSignal } from '../shared/protocol';
 import { generateClassKey } from '../shared/secure-channel';
-import type { Target, TeacherEvent, TeacherSettings, TeacherState } from './ipc';
+import type { ChatMessage, Target, TeacherEvent, TeacherSettings, TeacherState } from './ipc';
 import { Roster } from './roster';
 import { ClassServer, type ServerConfig } from './server';
 
@@ -63,6 +64,7 @@ function asTarget(raw: Target): Target {
 }
 
 const lockText = (message: unknown) => String(message ?? '').slice(0, 200);
+const clip = (value: unknown, max: number) => String(value ?? '').trim().slice(0, max);
 
 function emit(event: TeacherEvent): void {
   win?.webContents.send('teacher:event', event);
@@ -102,6 +104,7 @@ function createWindow(): void {
   win.on('close', (e) => {
     if (controlling) e.preventDefault();
   });
+  win.on('focus', () => win?.flashFrame(false));
   win.on('closed', () => (win = null));
 
   void win.loadFile(path.join(__dirname, 'index.html'));
@@ -143,10 +146,53 @@ function registerIpc(): void {
     server.send(id, { type: 'input', sessionId, events }),
   );
   on('teacher:broadcast-start', (target: Target, sessionId: string) => {
-    server.stopBroadcast();
+    server.clearPolicy('broadcast');
     server.setPolicy(asTarget(target), { broadcast: String(sessionId) });
   });
-  on('teacher:broadcast-stop', () => server.stopBroadcast());
+  on('teacher:broadcast-stop', () => server.clearPolicy('broadcast'));
+  handle('teacher:message', (target: Target, text: string) => {
+    const body = clip(text, LIMITS.message);
+    if (!body) throw new Error('Write a message first.');
+    return server.sendTo(asTarget(target), { type: 'message', id: randomUUID(), text: body });
+  });
+  handle('teacher:chat', (id: string, text: string): ChatMessage => {
+    const body = clip(text, LIMITS.chat);
+    if (!body) throw new Error('Empty message.');
+    const message: ChatMessage = { id: randomUUID(), from: 'teacher', text: body, at: Date.now() };
+    if (!server.sendTo({ ids: [String(id)], everyone: false }, { type: 'chat', id: message.id, text: body, at: message.at })) {
+      throw new Error('This student is offline.');
+    }
+    return message;
+  });
+  on('teacher:hand-clear', (id: string) => server.sendTo({ ids: [String(id)], everyone: false }, { type: 'hand-clear' }));
+  handle('teacher:poll-start', (target: Target, question: string, choices: string[]): Poll => {
+    const poll: Poll = {
+      pollId: randomUUID(),
+      question: clip(question, LIMITS.pollQuestion),
+      choices: (Array.isArray(choices) ? choices : [])
+        .map((c) => clip(c, LIMITS.pollChoice))
+        .filter(Boolean)
+        .slice(0, LIMITS.pollChoices),
+    };
+    if (!poll.question || poll.choices.length < 2) throw new Error('A poll needs a question and at least two answers.');
+    server.clearPolicy('poll');
+    server.setPolicy(asTarget(target), { poll });
+    return poll;
+  });
+  on('teacher:poll-end', () => server.clearPolicy('poll'));
+  on('teacher:attention', (title: string, body?: string) => {
+    // CM_QUIET keeps automated test runs from notifying whoever is at the computer.
+    if (!win || win.isFocused() || process.env.CM_QUIET === '1') return;
+    if (process.platform === 'darwin') app.dock?.bounce('informational');
+    else win.flashFrame(true);
+    if (!Notification.isSupported()) return;
+    const notice = new Notification({ title: clip(title, 120), body: clip(body, 200) });
+    notice.on('click', () => {
+      win?.show();
+      win?.focus();
+    });
+    notice.show();
+  });
   on('teacher:signal', (id: string, sessionId: string, signal: RtcSignal) =>
     server.send(id, { type: 'signal', sessionId, signal }),
   );
@@ -169,6 +215,8 @@ app.whenReady().then(async () => {
   });
   server.on('policy', (id, policy) => emit({ type: 'policy', id, policy }));
   server.on('version-mismatch', (address) => emit({ type: 'version-mismatch', address }));
+  server.on('chat', (id, { id: messageId, text, at }) => emit({ type: 'chat', id, message: { id: messageId, from: 'student', text, at } }));
+  server.on('poll-answer', (id, pollId, choice) => emit({ type: 'poll-answer', id, pollId, choice }));
   server.on('status', (id, status) => emit({ type: 'status', id, status }));
   server.on('thumb', (id, jpeg) => emit({ type: 'thumb', id, jpeg }));
   server.on('signal', (id, sessionId, signal) => emit({ type: 'signal', id, sessionId, signal }));

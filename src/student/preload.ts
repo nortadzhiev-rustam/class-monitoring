@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { RtcSignal } from '../shared/protocol';
-import type { DiscoveredClass, OverlayState, SetupStatus, StudentApi, ViewCommand } from './ipc';
+import type { ChatState, DiscoveredClass, OverlayState, PromptCard, SetupStatus, StudentApi, ViewCommand } from './ipc';
 
 const api: StudentApi = {
   signal: (sessionId, signal) => ipcRenderer.send('student:signal', sessionId, signal),
@@ -25,6 +25,18 @@ const api: StudentApi = {
   onSetupStatus: (listener) => {
     ipcRenderer.on('student:setup-status', (_e, status: SetupStatus) => listener(status));
   },
+  promptsReady: () => ipcRenderer.send('student:prompts-ready'),
+  onPrompts: (listener) => {
+    ipcRenderer.on('student:prompts', (_e, cards: PromptCard[]) => listener(cards));
+  },
+  promptAction: (id, action, value) => ipcRenderer.send('student:prompt-action', id, action, value),
+  promptsSize: (height) => ipcRenderer.send('student:prompts-size', height),
+  chatReady: () => ipcRenderer.send('student:chat-ready'),
+  onChat: (listener) => {
+    ipcRenderer.on('student:chat', (_e, state: ChatState) => listener(state));
+  },
+  chatSend: (text) => ipcRenderer.send('student:chat-send', text),
+  setHand: (raised) => ipcRenderer.send('student:hand', raised),
 };
 
 contextBridge.exposeInMainWorld('student', api);

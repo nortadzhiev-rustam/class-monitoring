@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'">
+  <title>Chat with your teacher</title>
+  <link rel="stylesheet" href="base.css">
+  <link rel="stylesheet" href="chat.css">
+</head>
+<body>
+  <header class="bar">
+    <div class="who">
+      <strong id="teacher">Your teacher</strong>
+      <span id="presence">Connected</span>
+    </div>
+    <button class="btn" id="hand" type="button">Raise hand</button>
+  </header>
+  <main id="lines" aria-live="polite">
+    <p class="empty" id="empty">Messages between you and your teacher appear here.</p>
+  </main>
+  <form id="composer">
+    <textarea id="text" rows="2" maxlength="2000" placeholder="Write a message…" aria-label="Message"></textarea>
+    <button class="btn primary" id="send" type="submit">Send</button>
+  </form>
+  <script src="chat.js"></script>
+</body>
+</html>

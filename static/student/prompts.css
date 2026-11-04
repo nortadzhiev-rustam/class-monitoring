@@ -1,0 +1,52 @@
+html, body { min-height: 0; overflow: hidden; }
+
+#cards { display: flex; flex-direction: column; gap: 8px; padding: 8px; }
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.card.enter { animation: card-in 160ms ease-out; }
+@keyframes card-in { from { transform: translateY(6px); opacity: 0; } }
+
+.card header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  -webkit-app-region: drag;
+}
+.card header .time { margin-left: auto; font-weight: 400; }
+.badge-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; }
+.card.hand .badge-dot { background: #e8a33a; }
+
+.card .text { margin: 0; font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.card .question { margin: 0; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.card .hint { margin: 0; color: var(--muted); font-size: 12px; }
+
+.card footer { display: flex; justify-content: flex-end; gap: 6px; }
+
+.choices { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.choices.long { grid-template-columns: 1fr; }
+.choice {
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-weight: 500;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.choice:hover { border-color: var(--accent); }
+.choice[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }

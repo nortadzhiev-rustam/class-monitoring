@@ -10,6 +10,7 @@ import {
   APP_ID,
   BEACON_INTERVAL_MS,
   DISCOVERY_PORT,
+  LIMITS,
   PROTOCOL_VERSION,
   type Beacon,
   type Platform,
@@ -44,6 +45,8 @@ export interface ServerEvents {
   'broadcast-ready': [string, string];
   'student-error': [string, string | undefined, string];
   policy: [string, Policy];
+  chat: [string, { id: string; text: string; at: number }];
+  'poll-answer': [string, string, number];
   /** A computer at this address tried to join with a different protocol version. */
   'version-mismatch': [string];
 }
@@ -113,9 +116,22 @@ export class ClassServer extends EventEmitter<ServerEvents> {
     this.pushPolicy(this.policies.apply({ ids, everyone: target.everyone }, patch));
   }
 
-  /** Ends the screen broadcast for everyone it was going to. */
-  stopBroadcast(): void {
-    this.pushPolicy(this.policies.clear('broadcast', this.students.keys()));
+  /** Turns a setting off for everyone it was on for (ends the broadcast, the poll, ...). */
+  clearPolicy(key: keyof Policy): void {
+    this.pushPolicy(this.policies.clear(key, this.students.keys()));
+  }
+
+  /** Sends to every connected student in the target; returns how many got it. */
+  sendTo(target: Target, msg: TeacherMessage): number {
+    const ids = target.everyone ? [...this.students.keys()] : target.ids;
+    let sent = 0;
+    for (const id of ids) {
+      const student = this.students.get(id);
+      if (!student) continue;
+      student.channel.send(msg);
+      sent++;
+    }
+    return sent;
   }
 
   private summary(s: Student): StudentSummary {
@@ -178,7 +194,7 @@ export class ClassServer extends EventEmitter<ServerEvents> {
       info,
       address,
       channel,
-      status: { locked: false, viewing: false, controlled: false },
+      status: { locked: false, viewing: false, controlled: false, hand: null },
       alive: true,
     };
     this.students.set(info.id, student);
@@ -202,9 +218,26 @@ export class ClassServer extends EventEmitter<ServerEvents> {
     const id = student.info.id;
     switch (msg.type) {
       case 'status':
-        student.status = { locked: msg.locked, viewing: msg.viewing, controlled: msg.controlled };
+        student.status = {
+          locked: msg.locked === true,
+          viewing: msg.viewing === true,
+          controlled: msg.controlled === true,
+          hand: typeof msg.hand === 'string' ? msg.hand.slice(0, LIMITS.handNote) : null,
+        };
         this.emit('status', id, student.status);
         break;
+      case 'chat':
+        if (typeof msg.text === 'string' && msg.text.trim()) {
+          this.emit('chat', id, { id: String(msg.id).slice(0, 64), text: msg.text.slice(0, LIMITS.chat), at: Date.now() });
+        }
+        break;
+      case 'poll-answer': {
+        const poll = this.policies.get(id).poll;
+        if (poll && msg.pollId === poll.pollId && Number.isInteger(msg.choice) && msg.choice >= 0 && msg.choice < poll.choices.length) {
+          this.emit('poll-answer', id, msg.pollId, msg.choice);
+        }
+        break;
+      }
       case 'thumb':
         if (payload) this.emit('thumb', id, payload);
         break;
