@@ -13,6 +13,7 @@
     "teacher": "npm run build && electron dist/teacher/main.js",
     "student": "npm run build && electron dist/student/main.js",
     "test:e2e": "npm run build && node tests/e2e.mjs",
+    "pack:extension": "npm run build && node scripts/pack-extension.mjs",
     "dist:teacher": "npm run build && npm run build:native && electron-builder --config electron-builder.teacher.yml",
     "dist:student": "npm run build && npm run build:native && electron-builder --config electron-builder.student.yml"
   },
