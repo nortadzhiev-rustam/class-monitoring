@@ -1,12 +1,15 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeTheme, Notification, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeTheme, Notification, shell, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { configureApp, shareScreenWithoutPicker } from '../shared/electron-setup';
+import { pickFiles, pickSavePath } from '../shared/native-dialogs';
 import { randomUUID } from 'node:crypto';
 import { CONTROL_PORT, LIMITS, type InputEvent, type Platform, type Poll, type RtcSignal } from '../shared/protocol';
 import { generateClassKey } from '../shared/secure-channel';
-import type { ChatMessage, Target, TeacherEvent, TeacherSettings, TeacherState } from './ipc';
+import { toCsv } from './csv';
+import { TeacherFiles } from './files';
+import type { ChatMessage, Group, Target, TeacherEvent, TeacherSettings, TeacherState } from './ipc';
 import { Roster } from './roster';
 import { ClassServer, type ServerConfig } from './server';
 
@@ -17,8 +20,10 @@ if (!app.requestSingleInstanceLock()) app.exit(0);
 let win: BrowserWindow | null = null;
 let server: ClassServer;
 let roster: Roster;
+let files: TeacherFiles;
 /** True while the teacher is remote-controlling a student. */
 let controlling = false;
+let quitting = false;
 let appMenu: Menu | null = null;
 
 const settingsFile = () => path.join(app.getPath('userData'), 'teacher.json');
@@ -53,6 +58,7 @@ function state(): TeacherState {
     addresses: server.addresses(),
     students: server.list(),
     roster: roster.list(),
+    groups: roster.groups(),
     platform: process.platform as Platform,
   };
 }
@@ -101,8 +107,10 @@ function createWindow(): void {
   win.removeMenu();
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', (e) => e.preventDefault());
+  // Alt+F4 while controlling goes to the student, not the console, but a real
+  // quit (logout, shutdown, Quit from the Dock) always goes through.
   win.on('close', (e) => {
-    if (controlling) e.preventDefault();
+    if (controlling && !quitting) e.preventDefault();
   });
   win.on('focus', () => win?.flashFrame(false));
   win.on('closed', () => (win = null));
@@ -180,6 +188,42 @@ function registerIpc(): void {
     return poll;
   });
   on('teacher:poll-end', () => server.clearPolicy('poll'));
+  handle('teacher:save-groups', (groups: Group[]) => roster.setGroups(groups));
+  handle('teacher:register-start', (target: Target) => {
+    const registerId = randomUUID();
+    server.clearPolicy('register');
+    server.setPolicy(asTarget(target), { register: registerId });
+    return registerId;
+  });
+  on('teacher:register-end', () => server.clearPolicy('register'));
+  handle('teacher:save-csv', async (defaultName: string, rows: string[][]) => {
+    const file = await pickSavePath(win, path.join(app.getPath('documents'), clip(defaultName, 100) || 'export.csv'), [
+      { name: 'Spreadsheet (CSV)', extensions: ['csv'] },
+    ]);
+    if (!file) return null;
+    const clean = (Array.isArray(rows) ? rows : []).map((row) => (Array.isArray(row) ? row.map((c) => String(c ?? '')) : []));
+    fs.writeFileSync(file, toCsv(clean));
+    return file;
+  });
+  handle('teacher:send-files', async (target: Target) => {
+    const picked = await pickFiles(win, 'Choose files to send to students');
+    if (!picked.length) return null;
+    const { batchId, students } = files.send(asTarget(target), picked);
+    return { batchId, files: picked.map((f) => path.basename(f)), students };
+  });
+  handle('teacher:collect-start', (target: Target, title: string) => {
+    const collection = files.startCollect(clip(title, LIMITS.collectTitle));
+    server.clearPolicy('collect');
+    server.setPolicy(asTarget(target), { collect: { collectId: collection.collectId, title: collection.title } });
+    return collection;
+  });
+  on('teacher:collect-end', () => {
+    server.clearPolicy('collect');
+    files.endCollect();
+  });
+  on('teacher:open-folder', (folder: string) => {
+    if (files.owns(String(folder))) void shell.openPath(String(folder));
+  });
   on('teacher:attention', (title: string, body?: string) => {
     // CM_QUIET keeps automated test runs from notifying whoever is at the computer.
     if (!win || win.isFocused() || process.env.CM_QUIET === '1') return;
@@ -209,9 +253,19 @@ app.whenReady().then(async () => {
   roster = new Roster(path.join(app.getPath('userData'), 'roster.json'));
   server = new ClassServer(loadConfig());
   server.on('joined', (student) => emit({ type: 'joined', student, entry: roster.seen(student.info, student.address) }));
+  files = new TeacherFiles(server, emit, process.env.CM_FILES_DIR ?? path.join(app.getPath('documents'), 'ClassMonitor'), (id) => {
+    const entry = roster.get(id);
+    return entry?.name || entry?.hostname || id;
+  });
   server.on('left', (id) => {
     roster.left(id);
+    files.left(id);
     emit({ type: 'left', id });
+  });
+  server.on('file', (id, msg, payload) => files.handle(id, msg, payload));
+  server.on('sign-in', (id, registerId, name) => {
+    roster.setName(id, name);
+    emit({ type: 'sign-in', id, registerId, name });
   });
   server.on('policy', (id, policy) => emit({ type: 'policy', id, policy }));
   server.on('version-mismatch', (address) => emit({ type: 'version-mismatch', address }));
@@ -243,6 +297,7 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', () => app.quit());
 app.on('before-quit', () => {
+  quitting = true;
   server?.stop();
   roster?.flush();
 });

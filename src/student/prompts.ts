@@ -7,7 +7,7 @@ import { BrowserWindow, ipcMain, nativeTheme, screen } from 'electron';
 import path from 'node:path';
 import type { PromptCard } from './ipc';
 
-type ActionHandler = (card: PromptCard, action: string, value: number | undefined) => void;
+type ActionHandler = (card: PromptCard, action: string, value: number | string | undefined) => void;
 
 const WIDTH = 360;
 const MARGIN = 16;
@@ -27,10 +27,11 @@ export function initPrompts(preloadPath: string): void {
     ready = true;
     push();
   });
-  ipcMain.on('student:prompt-action', (e, id: string, action: string, value?: number) => {
+  ipcMain.on('student:prompt-action', (e, id: string, action: string, value?: number | string) => {
     if (!fromPrompts(e)) return;
     const card = cards.find((c) => c.id === id);
-    if (card) handlers.get(card.kind)?.(card, String(action), typeof value === 'number' ? value : undefined);
+    const clean = typeof value === 'number' || typeof value === 'string' ? value : undefined;
+    if (card) handlers.get(card.kind)?.(card, String(action), clean);
   });
   ipcMain.on('student:prompts-size', (e, height: number) => {
     if (fromPrompts(e) && Number.isFinite(height)) fit(height);

@@ -7,8 +7,12 @@ import * as chat from './chat';
 import * as dialogs from './dialogs';
 import { $, api, errorText, plural, toast } from './dom';
 import * as grid from './grid';
+import * as groups from './groups';
+import * as handouts from './handouts';
 import * as help from './help';
+import { showMenu, type MenuItem } from './menu';
 import * as poll from './poll';
+import * as register from './register';
 import * as store from './store';
 import type { Student } from './store';
 import * as targets from './targets';
@@ -22,15 +26,88 @@ function toggleLock(s: Student): void {
   else dialogs.askLock(one, (message) => api.lock(one.target, message));
 }
 
+function forget(s: Student): void {
+  api.forget(s.id);
+  store.forget(s.id);
+}
+
+function sendMessage(to: targets.Resolved): void {
+  dialogs.askMessage(to, async (text) => {
+    try {
+      const sent = await api.message(to.target, text);
+      if (sent) toast(`Message sent to ${plural(sent, 'student')}.`, 'info');
+      else toast('Nobody you picked is online, so the message was not sent.');
+    } catch (err) {
+      toast(errorText(err));
+    }
+  });
+}
+
+async function createGroup(members: string[]): Promise<void> {
+  const name = await dialogs.askText(
+    'New group',
+    members.length ? `Name for a group of ${plural(members.length, 'student')}` : 'Name (add students to it from their ⋯ menu)',
+    `Group ${groups.list().length + 1}`,
+    'Create group',
+  );
+  if (!name) return;
+  await groups.create(name, members);
+  targets.clear();
+}
+
+/** A card's ⋯ / right-click menu. Group actions apply to the whole selection if this card is in it. */
+function cardMenu(s: Student, at: HTMLElement | { x: number; y: number }): void {
+  const ids = targets.isSelected(s.id) && targets.selectedIds().length > 1 ? targets.selectedIds() : [s.id];
+  const who = ids.length > 1 ? plural(ids.length, 'selected student') : store.displayName(s);
+  const items: MenuItem[] = [];
+  if (s.online) {
+    items.push(
+      { label: 'View screen', action: () => viewer.open(s, false) },
+      { label: 'Chat', action: () => chat.openThread(s.id) },
+      { label: 'Send message…', action: () => sendMessage(targets.only(s.id)) },
+      'separator',
+    );
+  }
+  for (const g of groups.list()) {
+    const inGroup = ids.every((id) => g.members.includes(id));
+    items.push({
+      label: inGroup ? `Remove ${who} from ${g.name}` : `Add ${who} to ${g.name}`,
+      action: () => void (inGroup ? groups.removeMembers(g.id, ids) : groups.addMembers(g.id, ids)),
+    });
+  }
+  items.push({ label: `New group with ${who}…`, action: () => void createGroup(ids) });
+  if (!s.online) items.push('separator', { label: 'Forget this computer', danger: true, action: () => forget(s) });
+  showMenu(at, items);
+}
+
+function groupMenu(g: { id: string; name: string; members: string[] }, at: HTMLElement | { x: number; y: number }): void {
+  const picked = targets.selectedIds();
+  const inGroup = picked.filter((id) => g.members.includes(id));
+  showMenu(at, [
+    { label: picked.length ? `Add ${plural(picked.length, 'selected student')}` : 'Add selected students', disabled: !picked.length, action: () => void groups.addMembers(g.id, picked) },
+    { label: inGroup.length ? `Remove ${plural(inGroup.length, 'selected student')}` : 'Remove selected students', disabled: !inGroup.length, action: () => void groups.removeMembers(g.id, inGroup) },
+    {
+      label: 'Rename…',
+      action: async () => {
+        const name = await dialogs.askText('Rename group', 'Group name', g.name, 'Rename');
+        if (name) await groups.rename(g.id, name);
+      },
+    },
+    'separator',
+    { label: `Delete ${g.name}`, danger: true, action: () => void groups.remove(g.id) },
+  ]);
+}
+
 grid.init({
   view: (s, control) => viewer.open(s, control),
   toggleLock,
-  forget: (s) => {
-    api.forget(s.id);
-    store.forget(s.id);
-  },
+  forget,
   chat: (s) => chat.openThread(s.id),
+  menu: cardMenu,
 });
+groups.init({ create: () => void createGroup(targets.selectedIds()), menu: groupMenu });
+register.init({ newRegister: () => void register.start(targets.current()) });
+handouts.init({ current: targets.current });
 viewer.init({ toggleLock, dialogOpen: dialogs.anyOpen });
 help.init({ view: (s) => viewer.open(s, false), chat: (s) => chat.openThread(s.id) });
 chat.init();
@@ -44,19 +121,15 @@ $('#lock').addEventListener('click', () => {
 });
 $('#unlock').addEventListener('click', () => api.unlock(targets.current().target));
 $('#broadcast').addEventListener('click', () => (broadcast.active() ? broadcast.stop() : void broadcast.start(targets.current())));
-$('#message').addEventListener('click', () => {
-  const to = targets.current();
-  dialogs.askMessage(to, async (text) => {
-    try {
-      const sent = await api.message(to.target, text);
-      if (sent) toast(`Message sent to ${plural(sent, 'student')}.`, 'info');
-      else toast('Nobody you picked is online, so the message was not sent.');
-    } catch (err) {
-      toast(errorText(err));
-    }
-  });
-});
+$('#message').addEventListener('click', () => sendMessage(targets.current()));
 $('#poll').addEventListener('click', () => poll.openDialog(targets.current()));
+$('#register').addEventListener('click', () => void register.start(targets.current()));
+$('#files').addEventListener('click', () =>
+  showMenu($('#files'), [
+    { label: 'Send files…', action: () => void handouts.send(targets.current()) },
+    { label: 'Collect work…', action: () => void handouts.collect(targets.current()) },
+  ]),
+);
 
 $('#select-all').addEventListener('click', () => targets.selectAll(grid.visibleIds()));
 $('#select-none').addEventListener('click', () => targets.clear());
@@ -90,6 +163,7 @@ function applyState(next: TeacherState): void {
   $('#empty-room').textContent = state.settings.room;
   $('#empty-key').textContent = state.settings.classKey;
   store.load(state.roster, state.students);
+  groups.load(state.groups);
 }
 
 /** Warn once per address, not on every reconnect attempt. */
@@ -131,6 +205,15 @@ api.onEvent((event: TeacherEvent) => {
       break;
     case 'poll-answer':
       poll.receive(event.id, event.pollId, event.choice);
+      break;
+    case 'sign-in':
+      register.signIn(event.id, event.registerId, event.name);
+      break;
+    case 'transfer':
+      handouts.transfer(event.transfer);
+      break;
+    case 'collected':
+      handouts.collected(event.id, event.collectId, event.name);
       break;
     case 'version-mismatch':
       if (versionWarned.has(event.address)) break;

@@ -45,9 +45,18 @@ export interface Policy {
   broadcast: string | null;
   /** The poll the student should be answering, or null. */
   poll: Poll | null;
+  /** Attendance register the student should sign in to, or null. */
+  register: string | null;
+  /** Work the teacher is collecting, or null. */
+  collect: Collect | null;
 }
 
-export const OPEN_POLICY: Policy = { lock: null, broadcast: null, poll: null };
+export const OPEN_POLICY: Policy = { lock: null, broadcast: null, poll: null, register: null, collect: null };
+
+export interface Collect {
+  collectId: string;
+  title: string;
+}
 
 export interface Poll {
   pollId: string;
@@ -62,7 +71,22 @@ export const LIMITS = {
   pollQuestion: 300,
   pollChoice: 60,
   pollChoices: 6,
+  name: 60,
+  collectTitle: 80,
+  /** Largest single file sent or collected. */
+  fileBytes: 200 * 1024 * 1024,
 } as const;
+
+/**
+ * File transfer, the same in both directions: start, numbered chunks (each
+ * with a binary payload), end with a SHA-256 the receiver checks, then the
+ * receiver acknowledges. Student uploads carry the collectId they answer.
+ */
+export type FileMessage =
+  | { type: 'file-start'; transferId: string; name: string; size: number; collectId?: string }
+  | { type: 'file-chunk'; transferId: string; seq: number }
+  | { type: 'file-end'; transferId: string; sha256: string }
+  | { type: 'file-ack'; transferId: string; ok: boolean; error?: string };
 
 export type RtcSignal =
   | { kind: 'offer' | 'answer'; sdp: string }
@@ -90,7 +114,8 @@ export type TeacherMessage =
   | { type: 'message'; id: string; text: string }
   | { type: 'chat'; id: string; text: string; at: number }
   /** The teacher has dealt with the student's raised hand. */
-  | { type: 'hand-clear' };
+  | { type: 'hand-clear' }
+  | FileMessage;
 
 export type StudentMessage =
   | { type: 'info'; info: StudentInfo }
@@ -102,4 +127,6 @@ export type StudentMessage =
   | { type: 'signal'; sessionId: string; signal: RtcSignal }
   | { type: 'chat'; id: string; text: string; at: number }
   | { type: 'poll-answer'; pollId: string; choice: number }
+  | { type: 'sign-in'; registerId: string; name: string }
+  | FileMessage
   | { type: 'error'; sessionId?: string; message: string };

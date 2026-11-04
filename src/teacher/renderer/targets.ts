@@ -1,8 +1,9 @@
-// Who the toolbar actions apply to: the selected students, or everyone when
-// nothing is selected. The view bar always spells this out.
+// Who the toolbar actions apply to: the selected students; with nothing
+// selected, the group being viewed, or everyone. The view bar always says which.
 
 import type { Target } from '../ipc';
 import { $, plural } from './dom';
+import * as groups from './groups';
 import * as store from './store';
 
 const selected = new Set<string>();
@@ -17,13 +18,14 @@ export function onChange(listener: () => void): void {
 function changed(): void {
   for (const id of selected) if (!store.get(id)) selected.delete(id);
   const n = selected.size;
-  $('#target-text').textContent = n ? plural(n, 'selected student') : 'everyone';
+  $('#target-text').textContent = n ? plural(n, 'selected student') : (groups.current()?.name ?? 'everyone');
   $('#select-none').hidden = n === 0;
   document.body.classList.toggle('selecting', n > 0);
   for (const listener of listeners) listener();
 }
 
 export const isSelected = (id: string) => selected.has(id);
+export const selectedIds = () => [...selected];
 
 export function toggle(id: string): void {
   if (!selected.delete(id)) selected.add(id);
@@ -69,13 +71,18 @@ export interface Resolved {
 }
 
 export function current(): Resolved {
-  const everyone = selected.size === 0;
-  const ids = everyone ? store.all().map((s) => s.id) : [...selected];
-  return {
-    target: { ids, everyone },
-    label: everyone ? 'everyone' : plural(ids.length, 'selected student'),
-    online: ids.filter((id) => store.get(id)?.online).length,
-  };
+  const online = (ids: string[]) => ids.filter((id) => store.get(id)?.online).length;
+  if (selected.size) {
+    const ids = [...selected];
+    return { target: { ids, everyone: false }, label: plural(ids.length, 'selected student'), online: online(ids) };
+  }
+  const group = groups.current();
+  if (group) {
+    const ids = group.members.filter((id) => store.get(id));
+    return { target: { ids, everyone: false }, label: group.name, online: online(ids) };
+  }
+  const ids = store.all().map((s) => s.id);
+  return { target: { ids, everyone: true }, label: 'everyone', online: online(ids) };
 }
 
 /** A single student, for actions on one card. */

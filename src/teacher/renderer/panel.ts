@@ -3,10 +3,10 @@
 
 import { $ } from './dom';
 
-export type TabId = 'help' | 'chat' | 'poll';
+export type TabId = 'help' | 'chat' | 'poll' | 'register' | 'files';
 
 const panel = $('#panel');
-const counts: Record<TabId, number> = { help: 0, chat: 0, poll: 0 };
+const counts: Record<TabId, number> = { help: 0, chat: 0, poll: 0, register: 0, files: 0 };
 let current: TabId = 'help';
 const showListeners = new Set<(tab: TabId) => void>();
 

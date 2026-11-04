@@ -640,3 +640,57 @@ code { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 0.9
 .choice-inputs li::marker { color: var(--muted); }
 .choice-inputs .choice-row { display: flex; gap: 6px; }
 .choice-inputs input { flex: 1; }
+
+/* ---------- groups, menus, register & files ---------- */
+
+.view-chip.add { border-style: dashed; color: var(--muted); }
+.caret { width: 14px; height: 14px; margin-left: -2px; }
+.chip.icon-chip { width: 28px; padding: 0; justify-content: center; }
+
+.menu {
+  position: fixed;
+  z-index: 30;
+  min-width: 200px;
+  max-width: 320px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  animation: toast-in 100ms ease-out;
+}
+.menu button {
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.menu button:hover:not(:disabled), .menu button:focus-visible { background: var(--accent-soft); outline: none; }
+.menu button:disabled { color: var(--muted); cursor: default; }
+.menu button.danger { color: var(--danger); }
+.menu hr { margin: 4px 6px; border: 0; border-top: 1px solid var(--border); }
+
+.report { padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.report[hidden] { display: none; }
+.people { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; }
+.people li { display: flex; align-items: baseline; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--border); }
+.people li:last-child { border-bottom: 0; }
+.people .who-name { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.people .detail { color: var(--muted); font-size: 12px; text-align: right; overflow-wrap: anywhere; }
+.people li.missing .who-name { color: var(--muted); font-weight: 500; }
+.poll-actions.center { justify-content: center; }
+
+.batches { margin: 0; padding: 0; list-style: none; }
+.batches li { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-top: 1px solid var(--border); }
+.batches .names { font-weight: 600; overflow-wrap: anywhere; }
+.batches .detail { color: var(--muted); font-size: 12px; }
+.batches .failed { color: var(--danger); font-size: 12px; overflow-wrap: anywhere; }
+.batches .track { height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.batches .fill { height: 100%; background: var(--accent); transition: width 200ms; }

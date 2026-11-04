@@ -1,4 +1,4 @@
-// Modal dialogs: lock message, student message and class settings.
+// Modal dialogs: lock message, student message, short text and class settings.
 
 import type { TeacherState } from '../ipc';
 import { $, api, errorText } from './dom';
@@ -46,6 +46,32 @@ messageDialog.addEventListener('close', () => {
   const confirm = onMessageConfirmed;
   onMessageConfirmed = null;
   if (messageDialog.returnValue === 'ok' && messageText.value.trim()) confirm?.(messageText.value.trim());
+});
+
+// ---------------------------------------------------------------- one line of text
+
+const textDialog = $<HTMLDialogElement>('#text-dialog');
+const textInput = $<HTMLInputElement>('#text-input');
+let onText: ((value: string | null) => void) | null = null;
+
+/** Asks for a short piece of text (a group name, what's being collected); null if cancelled. */
+export function askText(title: string, label: string, initial: string, confirm: string): Promise<string | null> {
+  onText?.(null);
+  $('#text-title').textContent = title;
+  $('#text-label').textContent = label;
+  $('#text-ok').textContent = confirm;
+  textInput.value = initial;
+  textDialog.returnValue = '';
+  textDialog.showModal();
+  textInput.select();
+  return new Promise((resolve) => (onText = resolve));
+}
+
+textDialog.addEventListener('close', () => {
+  const resolve = onText;
+  onText = null;
+  const value = textInput.value.trim();
+  resolve?.(textDialog.returnValue === 'ok' && value ? value : null);
 });
 
 // ---------------------------------------------------------------- settings

@@ -1,6 +1,6 @@
 // Types shared by the teacher's main process, preload and renderer.
 
-import type { InputEvent, Platform, Policy, Poll, RtcSignal, StudentInfo } from '../shared/protocol';
+import type { Collect, InputEvent, Platform, Policy, Poll, RtcSignal, StudentInfo } from '../shared/protocol';
 
 export interface StudentStatus {
   locked: boolean;
@@ -33,6 +33,26 @@ export interface RosterEntry {
   macs: string[];
   address: string;
   lastSeen: number;
+  /** Name typed when signing in to a register. */
+  name?: string;
+}
+
+export interface Group {
+  id: string;
+  name: string;
+  members: string[];
+}
+
+/** Progress of one file going to one student. */
+export interface Transfer {
+  transferId: string;
+  batchId: string;
+  id: string;
+  name: string;
+  size: number;
+  sent: number;
+  state: 'sending' | 'done' | 'failed';
+  error?: string;
 }
 
 /**
@@ -56,6 +76,7 @@ export interface TeacherState {
   addresses: string[];
   students: StudentSummary[];
   roster: RosterEntry[];
+  groups: Group[];
   platform: Platform;
 }
 
@@ -71,7 +92,11 @@ export type TeacherEvent =
   /** A computer tried to join but runs a different ClassMonitor version. */
   | { type: 'version-mismatch'; address: string }
   | { type: 'chat'; id: string; message: ChatMessage }
-  | { type: 'poll-answer'; id: string; pollId: string; choice: number };
+  | { type: 'poll-answer'; id: string; pollId: string; choice: number }
+  | { type: 'sign-in'; id: string; registerId: string; name: string }
+  | { type: 'transfer'; transfer: Transfer }
+  /** A student handed in a file for the current collection. */
+  | { type: 'collected'; id: string; collectId: string; name: string; size: number };
 
 export interface TeacherApi {
   state(): Promise<TeacherState>;
@@ -98,5 +123,15 @@ export interface TeacherApi {
   pollEnd(): void;
   /** If the console isn't in front: a desktop notification plus a Dock bounce / taskbar flash. */
   attention(title: string, body?: string): void;
+  saveGroups(groups: Group[]): Promise<Group[]>;
+  registerStart(target: Target): Promise<string>;
+  registerEnd(): void;
+  /** Asks where to save, then writes the rows as CSV; resolves to the path or null if cancelled. */
+  saveCsv(defaultName: string, rows: string[][]): Promise<string | null>;
+  /** Picks files and sends them to the target's online students; null if cancelled. */
+  sendFiles(target: Target): Promise<{ batchId: string; files: string[]; students: number } | null>;
+  collectStart(target: Target, title: string): Promise<Collect & { folder: string }>;
+  collectEnd(): void;
+  openFolder(folder: string): void;
   onEvent(listener: (event: TeacherEvent) => void): void;
 }

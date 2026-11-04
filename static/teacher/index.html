@@ -24,6 +24,10 @@
     <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></symbol>
     <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
     <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-register" viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M9 10h6M9 14h6M9 18h3"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2h8.5A1.5 1.5 0 0 1 21 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="6" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="18" cy="12" r="1.2"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5"/></symbol>
     <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="6.5" height="6.5" rx="1"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1"/></symbol>
   </svg>
 
@@ -51,9 +55,7 @@
   </header>
 
   <div class="viewbar">
-    <div class="views" id="views">
-      <button class="view-chip active" type="button" data-view="all">All students <span class="n" id="all-count">0</span></button>
-    </div>
+    <div class="views" id="views"></div>
     <div class="spacer"></div>
     <div class="target" id="target">
       <span class="muted">Acting on</span>
@@ -70,6 +72,9 @@
     <span class="divider"></span>
     <button class="btn" id="message" type="button"><svg class="icon"><use href="#i-message"/></svg>Message</button>
     <button class="btn" id="poll" type="button"><svg class="icon"><use href="#i-poll"/></svg>Poll</button>
+    <span class="divider"></span>
+    <button class="btn" id="register" type="button"><svg class="icon"><use href="#i-register"/></svg>Register</button>
+    <button class="btn" id="files" type="button"><svg class="icon"><use href="#i-folder"/></svg>Files<svg class="icon caret"><use href="#i-down"/></svg></button>
   </div>
 
   <div class="banner" id="banner" hidden>
@@ -96,6 +101,8 @@
           <button class="tab" type="button" role="tab" data-tab="help">Help <span class="count" hidden></span></button>
           <button class="tab" type="button" role="tab" data-tab="chat">Chat <span class="count" hidden></span></button>
           <button class="tab" type="button" role="tab" data-tab="poll">Poll <span class="count" hidden></span></button>
+          <button class="tab" type="button" role="tab" data-tab="register">Register <span class="count" hidden></span></button>
+          <button class="tab" type="button" role="tab" data-tab="files">Files <span class="count" hidden></span></button>
         </nav>
         <button class="btn icon-only small" id="panel-close" type="button" title="Close panel"><svg class="icon"><use href="#i-close"/></svg></button>
       </header>
@@ -137,6 +144,43 @@
           <button class="btn primary" id="poll-new" type="button"><svg class="icon"><use href="#i-plus"/></svg>New poll</button>
         </div>
       </section>
+
+      <section class="tab-body" data-tab="register" role="tabpanel">
+        <div class="report" id="register-results" hidden>
+          <p class="poll-state" id="register-state"></p>
+          <p class="muted small" id="register-count"></p>
+          <ul class="people" id="register-list"></ul>
+          <div class="poll-actions">
+            <button class="btn" id="register-export" type="button">Export CSV</button>
+            <button class="btn" id="register-end" type="button">End register</button>
+          </div>
+        </div>
+        <div class="panel-empty" id="register-empty">
+          <p>Students sign in with their name; you get a register you can export for your records.</p>
+          <button class="btn primary" id="register-new" type="button"><svg class="icon"><use href="#i-register"/></svg>Take the register</button>
+        </div>
+      </section>
+
+      <section class="tab-body" data-tab="files" role="tabpanel">
+        <div class="report" id="collect-results" hidden>
+          <p class="poll-state" id="collect-state"></p>
+          <h3 class="poll-question" id="collect-title"></h3>
+          <p class="muted small" id="collect-count"></p>
+          <ul class="people" id="collect-list"></ul>
+          <div class="poll-actions">
+            <button class="btn" id="collect-folder" type="button">Open folder</button>
+            <button class="btn" id="collect-end" type="button">Stop collecting</button>
+          </div>
+        </div>
+        <ul class="batches" id="batches"></ul>
+        <div class="panel-empty" id="files-empty">
+          <p>Hand out worksheets, or collect students' work into a folder.</p>
+          <div class="poll-actions center">
+            <button class="btn" id="files-send" type="button">Send files…</button>
+            <button class="btn primary" id="files-collect" type="button">Collect work…</button>
+          </div>
+        </div>
+      </section>
     </aside>
   </div>
 
@@ -154,9 +198,11 @@
           <button class="chip" data-action="control" type="button"><svg class="icon"><use href="#i-pointer"/></svg>Control</button>
           <button class="chip" data-action="lock" type="button"><svg class="icon"><use href="#i-lock"/></svg><span>Lock</span></button>
           <button class="chip" data-action="chat" type="button"><svg class="icon"><use href="#i-chat"/></svg>Chat</button>
+          <button class="chip icon-chip" data-action="more" type="button" title="More"><svg class="icon"><use href="#i-more"/></svg></button>
         </div>
         <div class="hover-actions offline-only">
           <button class="chip" data-action="forget" type="button"><svg class="icon"><use href="#i-close"/></svg>Forget</button>
+          <button class="chip icon-chip" data-action="more" type="button" title="More"><svg class="icon"><use href="#i-more"/></svg></button>
         </div>
       </div>
       <footer>
@@ -191,6 +237,20 @@
       <menu>
         <button class="btn" value="cancel" type="submit">Cancel</button>
         <button class="btn primary" value="ok" type="submit" id="lock-confirm"><svg class="icon"><use href="#i-lock"/></svg>Lock</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="text-dialog">
+    <form method="dialog">
+      <h2 id="text-title"></h2>
+      <label class="field">
+        <span id="text-label"></span>
+        <input id="text-input" maxlength="80" autocomplete="off">
+      </label>
+      <menu>
+        <button class="btn" value="cancel" type="submit" formnovalidate>Cancel</button>
+        <button class="btn primary" value="ok" type="submit" id="text-ok">OK</button>
       </menu>
     </form>
   </dialog>

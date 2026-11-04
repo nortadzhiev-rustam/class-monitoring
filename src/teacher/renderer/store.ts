@@ -11,6 +11,8 @@ export interface Student {
   platform: Platform;
   address: string;
   lastSeen: number;
+  /** Name the student signed in with, if any. */
+  name?: string;
   online: boolean;
   status: StudentStatus;
   policy: Policy;
@@ -40,8 +42,13 @@ function changed(id: string | null): void {
   for (const listener of listeners) listener(id);
 }
 
-export function displayName(s: Pick<Student, 'hostname'>): string {
+export function computerName(s: Pick<Student, 'hostname'>): string {
   return s.hostname.replace(/\.local$/, '');
+}
+
+/** The student's signed-in name, or the computer name until they sign in. */
+export function displayName(s: Pick<Student, 'hostname' | 'name'>): string {
+  return s.name || computerName(s);
 }
 
 export function get(id: string): Student | undefined {
@@ -109,6 +116,13 @@ export function patch(id: string, extras: Partial<Extras>): void {
   if (!s) return;
   students.set(id, { ...s, ...extras });
   changed(id);
+}
+
+export function setName(id: string, name: string): void {
+  const s = students.get(id);
+  if (!s) return;
+  students.set(id, { ...s, name });
+  changed(null); // Names decide the card order.
 }
 
 export function setPolicy(id: string, policy: Policy): void {

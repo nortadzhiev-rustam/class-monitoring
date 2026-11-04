@@ -13,6 +13,7 @@ import {
   LIMITS,
   PROTOCOL_VERSION,
   type Beacon,
+  type FileMessage,
   type Platform,
   type Policy,
   type RtcSignal,
@@ -20,6 +21,7 @@ import {
   type StudentMessage,
   type TeacherMessage,
 } from '../shared/protocol';
+import type { FileLink } from '../shared/file-transfer';
 import { acceptStudent, CLOSE_REPLACED, deriveClassKey, type SecureChannel } from '../shared/secure-channel';
 import type { StudentStatus, StudentSummary, Target, TeacherSettings } from './ipc';
 import { PolicyTable } from './policy';
@@ -47,6 +49,8 @@ export interface ServerEvents {
   policy: [string, Policy];
   chat: [string, { id: string; text: string; at: number }];
   'poll-answer': [string, string, number];
+  'sign-in': [string, string, string];
+  file: [string, FileMessage, Buffer | undefined];
   /** A computer at this address tried to join with a different protocol version. */
   'version-mismatch': [string];
 }
@@ -119,6 +123,27 @@ export class ClassServer extends EventEmitter<ServerEvents> {
   /** Turns a setting off for everyone it was on for (ends the broadcast, the poll, ...). */
   clearPolicy(key: keyof Policy): void {
     this.pushPolicy(this.policies.clear(key, this.students.keys()));
+  }
+
+  policyOf(id: string): Policy {
+    return this.policies.get(id);
+  }
+
+  /** Connected students among the target ("everyone" means everyone connected). */
+  onlineIn(target: Target): string[] {
+    return target.everyone ? [...this.students.keys()] : target.ids.filter((id) => this.students.has(id));
+  }
+
+  /** A file-sending handle for one connected student. */
+  fileLink(id: string): FileLink | null {
+    const student = this.students.get(id);
+    if (!student) return null;
+    const { channel } = student;
+    return {
+      send: (msg, payload) => channel.send(msg, payload),
+      buffered: () => channel.bufferedAmount,
+      open: () => channel.isOpen && this.students.get(id) === student,
+    };
   }
 
   /** Sends to every connected student in the target; returns how many got it. */
@@ -230,6 +255,17 @@ export class ClassServer extends EventEmitter<ServerEvents> {
         if (typeof msg.text === 'string' && msg.text.trim()) {
           this.emit('chat', id, { id: String(msg.id).slice(0, 64), text: msg.text.slice(0, LIMITS.chat), at: Date.now() });
         }
+        break;
+      case 'sign-in': {
+        const name = typeof msg.name === 'string' ? msg.name.trim().slice(0, LIMITS.name) : '';
+        if (name && msg.registerId === this.policies.get(id).register) this.emit('sign-in', id, msg.registerId, name);
+        break;
+      }
+      case 'file-start':
+      case 'file-chunk':
+      case 'file-end':
+      case 'file-ack':
+        this.emit('file', id, msg, payload);
         break;
       case 'poll-answer': {
         const poll = this.policies.get(id).poll;

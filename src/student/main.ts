@@ -11,9 +11,11 @@ import { LIMITS, type Platform, type Policy, type RtcSignal, type StudentInfo, t
 import { initChat, openChat, receiveChat, refreshChat, resetChat } from './chat';
 import { isManagedConfig, loadStudentConfig, type StudentConfig } from './config';
 import { TeacherLink } from './connection';
+import { handleFileMessage, resetFiles, showCollect } from './files';
 import { handNote, lowerHand } from './hand';
 import { Overlay } from './overlay';
 import { initPrompts, onPromptAction, removePrompt, removePrompts, showPrompt } from './prompts';
+import { showRegister } from './register';
 import * as session from './session';
 import { canOfferSetup, confirmUserConfig, initSetup, openSetup, sendSetupStatus } from './setup';
 import { changed, onChange, send, state } from './state';
@@ -24,7 +26,6 @@ configureApp('Student');
 
 if (!app.requestSingleInstanceLock()) app.exit(0);
 
-const canQuit = !app.isPackaged || process.env.CM_ALLOW_QUIT === '1';
 const preload = path.join(__dirname, 'preload.js');
 let overlay: Overlay;
 
@@ -74,6 +75,8 @@ function applyPolicy(policy: Policy): void {
   if (policy.broadcast) overlay.startBroadcast(policy.broadcast);
   else if (overlay.broadcastSession) overlay.stopBroadcast();
   showPoll(policy.poll);
+  void showRegister(policy.register);
+  showCollect(policy.collect);
   changed();
 }
 
@@ -100,7 +103,7 @@ function showPoll(poll: Policy['poll']): void {
 }
 
 onPromptAction('poll', (card, action, value) => {
-  if (card.kind !== 'poll' || action !== 'answer' || value === undefined || !card.choices[value]) return;
+  if (card.kind !== 'poll' || action !== 'answer' || typeof value !== 'number' || !card.choices[value]) return;
   pollAnswers.set(card.pollId, value);
   showPrompt({ ...card, answer: value });
   send({ type: 'poll-answer', pollId: card.pollId, choice: value });
@@ -110,7 +113,7 @@ onPromptAction('message', (card, action) => {
   if (action === 'dismiss') removePrompt(card.id);
 });
 
-function onTeacherMessage(msg: TeacherMessage): void {
+function onTeacherMessage(msg: TeacherMessage, payload: Buffer | undefined): void {
   switch (msg.type) {
     case 'welcome':
       state.teacher = { name: msg.teacher, room: msg.room };
@@ -154,6 +157,12 @@ function onTeacherMessage(msg: TeacherMessage): void {
     case 'hand-clear':
       lowerHand();
       break;
+    case 'file-start':
+    case 'file-chunk':
+    case 'file-end':
+    case 'file-ack':
+      handleFileMessage(msg, payload);
+      break;
   }
 }
 
@@ -161,7 +170,9 @@ function onTeacherMessage(msg: TeacherMessage): void {
 function resetSession(): void {
   session.endAll();
   overlay.clear();
-  removePrompts((c) => c.kind === 'poll');
+  // Cards that only make sense while the teacher is there go away with them.
+  removePrompts((c) => c.kind === 'poll' || c.kind === 'sign-in' || c.kind === 'collect');
+  resetFiles();
   state.teacher = null;
   changed();
 }
@@ -220,11 +231,10 @@ app.on('second-instance', () => {
   else if (state.teacher) openChat();
   else popUpTray();
 });
-// No window to close and no menu: the agent runs until logout.
+// No window to close, no menu and no Dock icon, so students have no way to quit
+// the agent; it runs until logout. Quitting is never blocked, so logging out
+// and shutting down always work.
 app.on('window-all-closed', () => {});
-app.on('before-quit', (e) => {
-  if (!canQuit) e.preventDefault();
-});
 
 app.whenReady().then(() => {
   app.dock?.hide();

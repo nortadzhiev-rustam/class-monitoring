@@ -22,6 +22,14 @@ const api: TeacherApi = {
   pollStart: (target, question, choices) => ipcRenderer.invoke('teacher:poll-start', target, question, choices),
   pollEnd: () => ipcRenderer.send('teacher:poll-end'),
   attention: (title, body) => ipcRenderer.send('teacher:attention', title, body),
+  saveGroups: (groups) => ipcRenderer.invoke('teacher:save-groups', groups),
+  registerStart: (target) => ipcRenderer.invoke('teacher:register-start', target),
+  registerEnd: () => ipcRenderer.send('teacher:register-end'),
+  saveCsv: (defaultName, rows) => ipcRenderer.invoke('teacher:save-csv', defaultName, rows),
+  sendFiles: (target) => ipcRenderer.invoke('teacher:send-files', target),
+  collectStart: (target, title) => ipcRenderer.invoke('teacher:collect-start', target, title),
+  collectEnd: () => ipcRenderer.send('teacher:collect-end'),
+  openFolder: (folder) => ipcRenderer.send('teacher:open-folder', folder),
   onEvent: (listener) => {
     ipcRenderer.on('teacher:event', (_e, event: TeacherEvent) => listener(event));
   },

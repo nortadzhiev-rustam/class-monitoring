@@ -7,13 +7,21 @@
 // over the screen. Screenshots go to tests/output/.
 
 import { _electron as electron } from 'playwright-core';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
 const out = path.resolve('tests/output');
 mkdirSync(out, { recursive: true });
 const tmp = mkdtempSync(path.join(os.tmpdir(), 'class-monitor-e2e-'));
+
+// Files the native pickers "choose" during the run (see src/shared/native-dialogs.ts).
+const worksheet = path.join(tmp, 'worksheet.bin');
+writeFileSync(worksheet, randomBytes(700 * 1024)); // several 256 KB chunks
+const essay = path.join(tmp, 'essay.txt');
+writeFileSync(essay, 'My essay about the water cycle.\n');
+const registerCsv = path.join(tmp, 'register.csv');
 
 const base = {
   ...process.env,
@@ -53,8 +61,14 @@ const idOf = (profile) => readFileSync(path.join(tmp, profile, 'student-id'), 'u
 const hasId = (profile) => existsSync(path.join(tmp, profile, 'student-id'));
 const card = (profile) => `.card[data-id="${idOf(profile)}"]`;
 const onlineCards = () => page.locator('.card:not(.offline)').count();
-const launchStudent = (profile, extra = {}) =>
-  electron.launch({ args: ['dist/student/main.js'], env: { ...base, CM_USER_DATA: path.join(tmp, profile), ...extra } });
+const studentEnv = (profile, extra = {}) => ({
+  ...base,
+  CM_USER_DATA: path.join(tmp, profile),
+  CM_FILES_DIR: path.join(tmp, profile, 'files'),
+  CM_TEST_OPEN: essay,
+  ...extra,
+});
+const launchStudent = (profile, extra = {}) => electron.launch({ args: ['dist/student/main.js'], env: studentEnv(profile, extra) });
 
 async function lockTarget(message) {
   await page.click('#lock');
@@ -71,7 +85,11 @@ async function waitFor(predicate, timeout = 10_000) {
   throw new Error('timed out');
 }
 
-const launchTeacher = () => electron.launch({ args: ['dist/teacher/main.js'], env: { ...base, CM_USER_DATA: path.join(tmp, 'teacher') } });
+const launchTeacher = () =>
+  electron.launch({
+    args: ['dist/teacher/main.js'],
+    env: { ...base, CM_USER_DATA: path.join(tmp, 'teacher'), CM_FILES_DIR: path.join(tmp, 'teacher-files'), CM_TEST_OPEN: worksheet, CM_TEST_SAVE: registerCsv },
+  });
 let teacher = await launchTeacher();
 let page = await teacher.firstWindow();
 page.on('console', (m) => m.type() === 'error' && console.log('    [teacher console]', m.text()));
@@ -231,6 +249,57 @@ await step('a poll collects answers live', async () => {
   await page.waitForSelector('#poll-state:has-text("Poll ended")');
 });
 
+await step('the register collects names and exports a CSV', async () => {
+  await page.click('#register');
+  const prompts = pageOf(student, 'prompts.html');
+  await prompts.waitForSelector('.card.sign-in input.name', { timeout: 10_000 });
+  await prompts.fill('.card.sign-in input.name', 'Ada Lovelace');
+  await prompts.click('.card.sign-in .btn.primary');
+  await prompts.waitForSelector('.card.sign-in.done:has-text("Signed in as Ada Lovelace")');
+  await page.waitForSelector('#register-count:has-text("1 of 1 student signed in")', { timeout: 10_000 });
+  await page.waitForSelector(`${card('student')} .name:has-text("Ada Lovelace")`);
+  await page.screenshot({ path: path.join(out, '12-register.png') });
+  await page.click('#register-export');
+  await page.waitForSelector('.toast.info:has-text("Register saved")', { timeout: 5000 });
+  const csv = readFileSync(registerCsv, 'utf8');
+  if (!/Ada Lovelace,MacBook|Ada Lovelace,.*Present/.test(csv)) throw new Error(`CSV is missing the row:\n${csv}`);
+  await page.click('#register-end');
+  return csv.split('\r\n')[1];
+});
+
+await step('files handed out arrive byte-identical', async () => {
+  await page.click('#files');
+  await page.click('.menu button:has-text("Send files")');
+  await page.waitForSelector('#batches li:has-text("Delivered to 1 student")', { timeout: 15_000 });
+  const received = path.join(tmp, 'student', 'files', 'From teacher', 'worksheet.bin');
+  if (!readFileSync(received).equals(readFileSync(worksheet))) throw new Error('the received file differs');
+  const prompts = pageOf(student, 'prompts.html');
+  await prompts.waitForSelector('.card.file:has-text("worksheet.bin")');
+  await prompts.screenshot({ path: path.join(out, '13-file-on-student.png') });
+  await prompts.click('.card.file .btn:has-text("Done")');
+  return '700 KB';
+});
+
+await step('collected work lands in the teacher\'s folder', async () => {
+  await page.click('#files');
+  await page.click('.menu button:has-text("Collect work")');
+  await page.fill('#text-input', 'Essay draft');
+  await page.click('#text-ok');
+  const prompts = pageOf(student, 'prompts.html');
+  await prompts.waitForSelector('.card.collect:has-text("Essay draft")', { timeout: 10_000 });
+  await prompts.click('.card.collect .btn.primary');
+  await prompts.waitForSelector('.card.collect li.ok:has-text("essay.txt")', { timeout: 10_000 });
+  await page.waitForSelector('#collect-count:has-text("1 of 1 student handed in")', { timeout: 10_000 });
+  await page.screenshot({ path: path.join(out, '14-collecting.png') });
+  const collected = path.join(tmp, 'teacher-files', 'Collected');
+  const folder = readdirSync(collected).find((f) => f.startsWith('Essay draft'));
+  const file = path.join(collected, folder, 'Ada Lovelace', 'essay.txt');
+  if (readFileSync(file, 'utf8') !== readFileSync(essay, 'utf8')) throw new Error('the collected file differs');
+  await page.click('#collect-end');
+  await prompts.waitForSelector('.card.collect', { state: 'detached', timeout: 10_000 });
+  return path.relative(tmp, file);
+});
+
 await step('a student with the wrong class key is refused', async () => {
   const intruder = await launchStudent('intruder', { CM_CLASS_KEY: 'wrong-key', CM_TEACHER_HOST: '127.0.0.1' });
   await page.waitForTimeout(5000);
@@ -240,8 +309,9 @@ await step('a student with the wrong class key is refused', async () => {
 });
 
 let newcomer = null;
+const newcomerEnv = studentEnv('newcomer');
 await step('a new student joins through the setup window', async () => {
-  const env = { ...base, CM_USER_DATA: path.join(tmp, 'newcomer') };
+  const env = newcomerEnv;
   delete env.CM_CLASS_KEY;
   delete env.CM_ROOM;
   const setupPage = (app) => app.windows().find((p) => p.url().endsWith('setup.html'));
@@ -286,6 +356,29 @@ await step('locking selected students leaves the others alone', async () => {
   return target;
 });
 
+await step('a group lock reaches only that group, also after a reconnect', async () => {
+  await page.hover(`${card('newcomer')} .screen`);
+  await page.click(`${card('newcomer')} .select`);
+  await page.click('.view-chip.add');
+  await page.fill('#text-input', 'Table 1');
+  await page.click('#text-ok');
+  await page.waitForSelector('.view-chip.active:has-text("Table 1")');
+  await page.waitForSelector(card('student'), { state: 'detached' });
+  const target = await page.textContent('#target-text');
+  if (target !== 'Table 1') throw new Error(`target says "${target}"`);
+  await lockTarget('Group work');
+  await waitFor(async () => overlayPages(newcomer).length > 0);
+  if (overlayPages(student).length) throw new Error('a student outside the group was locked');
+
+  await newcomer.close();
+  newcomer = await electron.launch({ args: ['dist/student/main.js'], env: newcomerEnv });
+  await page.waitForSelector(`${card('newcomer')}.locked`, { timeout: 20_000 });
+  await page.click('#unlock');
+  await waitFor(async () => overlayPages(newcomer).length === 0);
+  await page.click('.view-chip:has-text("All students")');
+  return target;
+});
+
 await step('a student who joins late gets the class lock', async () => {
   await lockTarget('Late again');
   const late = await launchStudent('late');
@@ -326,6 +419,8 @@ await step('the roster survives a teacher restart', async () => {
   await page.waitForSelector(`${card('newcomer')}.offline`, { timeout: 10_000 });
   await page.waitForSelector(`${card('student')}:not(.offline)`, { timeout: 20_000 });
   if (await page.locator(card('late')).count()) throw new Error('a forgotten student came back');
+  await page.waitForSelector('.view-chip:has-text("Table 1")', { timeout: 5000 });
+  await page.waitForSelector(`${card('student')} .name:has-text("Ada Lovelace")`);
   await teacher.close();
 });
 

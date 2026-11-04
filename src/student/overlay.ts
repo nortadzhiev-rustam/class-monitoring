@@ -2,12 +2,16 @@
 // while the teacher is showing their screen. Broadcast takes precedence over
 // lock; when it ends a still-locked student goes back to the lock screen.
 
-import { BrowserWindow, screen } from 'electron';
+import { app, BrowserWindow, screen } from 'electron';
 import path from 'node:path';
 import type { OverlayState } from './ipc';
 
 /** Development/testing: small ordinary windows instead of taking over the screen. */
 const WINDOWED = process.env.CM_OVERLAY_WINDOWED === '1';
+
+/** Lock windows refuse to close, except when the app itself is quitting (logout, shutdown). */
+let quitting = false;
+app.on('before-quit', () => (quitting = true));
 
 export class Overlay {
   private windows: BrowserWindow[] = [];
@@ -155,7 +159,9 @@ export class Overlay {
       });
     }
     // Alt+F4 / Cmd+W do nothing; destroy() below bypasses this.
-    win.on('close', (e) => e.preventDefault());
+    win.on('close', (e) => {
+      if (!quitting) e.preventDefault();
+    });
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.webContents.on('will-navigate', (e) => e.preventDefault());
     win.once('ready-to-show', () => {

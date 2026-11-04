@@ -50,3 +50,19 @@ html, body { min-height: 0; overflow: hidden; }
 }
 .choice:hover { border-color: var(--accent); }
 .choice[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+
+.card input.name {
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+.card input.name:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.card .hint.error { color: var(--danger); }
+.card.sign-in.done .text { color: var(--ok); font-weight: 600; }
+.card .file-name { font-weight: 600; }
+.card .files { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; font-size: 13px; overflow-wrap: anywhere; }
+.card .files .ok { color: var(--ok); }

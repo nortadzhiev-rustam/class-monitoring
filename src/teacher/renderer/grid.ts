@@ -1,6 +1,7 @@
 // The grid of student cards: thumbnails, status, selection and per-card actions.
 
 import { $, OS_LABEL, plural, timeAgo } from './dom';
+import * as groups from './groups';
 import * as store from './store';
 import type { Student } from './store';
 import * as targets from './targets';
@@ -10,6 +11,7 @@ export interface CardActions {
   toggleLock(s: Student): void;
   forget(s: Student): void;
   chat(s: Student): void;
+  menu(s: Student, at: HTMLElement | { x: number; y: number }): void;
 }
 
 interface Card {
@@ -42,6 +44,10 @@ const remember = (key: string, value: string) => {
 export function init(cardActions: CardActions): void {
   actions = cardActions;
   store.onChange((id) => (id ? renderCard(id) : renderAll()));
+  groups.onChange(() => {
+    renderAll();
+    targets.refresh();
+  });
   targets.onChange(() => {
     for (const [id, card] of cards) card.el.classList.toggle('selected', targets.isSelected(id));
   });
@@ -67,7 +73,7 @@ export function init(cardActions: CardActions): void {
   }, 60_000);
 }
 
-const visible = (s: Student) => s.online || showOfflineInput.checked;
+const visible = (s: Student) => groups.inView(s.id) && (s.online || showOfflineInput.checked);
 
 /** Ids of the cards on screen, in display order (for Shift-click ranges and Select all). */
 export function visibleIds(): string[] {
@@ -93,10 +99,17 @@ function createCard(id: string): Card {
     if (action === 'lock') actions.toggleLock(s);
     else if (action === 'forget') actions.forget(s);
     else if (action === 'chat') actions.chat(s);
+    else if (action === 'more') actions.menu(s, clicked.closest<HTMLElement>('[data-action]')!);
     else if (s.online && clicked.closest('.screen')) actions.view(s, action === 'control');
   });
   // Shift-click shouldn't also select the page's text.
   el.addEventListener('mousedown', (e) => e.shiftKey && e.preventDefault());
+  el.addEventListener('contextmenu', (e) => {
+    const s = store.get(id);
+    if (!s) return;
+    e.preventDefault();
+    actions.menu(s, { x: e.clientX, y: e.clientY });
+  });
   return { el, img: el.querySelector('img')!, thumbUrl: null };
 }
 
@@ -119,7 +132,7 @@ function renderCard(id: string): void {
   el.classList.toggle('controlled', s.status.controlled);
   el.classList.toggle('selected', targets.isSelected(id));
   el.querySelector('.name')!.textContent = store.displayName(s);
-  el.querySelector('.meta')!.textContent = [s.username, s.address].filter(Boolean).join(' · ');
+  el.querySelector('.meta')!.textContent = [s.name ? store.computerName(s) : null, s.username, s.address].filter(Boolean).join(' · ');
   el.querySelector('.os')!.textContent = OS_LABEL[s.platform] ?? s.platform;
   el.querySelector('.placeholder')!.textContent = s.online ? 'Waiting for screen…' : `Offline · last seen ${timeAgo(s.lastSeen)}`;
   el.querySelector('.badges')!.replaceChildren(...badges(s));
@@ -191,8 +204,12 @@ function updateCounts(): void {
   const online = everyone.filter((s) => s.online).length;
   const offline = everyone.length - online;
   $('#count').textContent = offline ? `${online} online · ${offline} offline` : `${online} online`;
-  $('#all-count').textContent = String(everyone.length);
   $('#empty').hidden = cards.size > 0;
-  $('#empty').querySelector('h1')!.textContent = everyone.length ? 'Nobody is online yet' : 'Waiting for students';
+  const group = groups.current();
+  $('#empty').querySelector('h1')!.textContent = group
+    ? `Nobody in ${group.name} to show`
+    : everyone.length
+      ? 'Nobody is online yet'
+      : 'Waiting for students';
   $('#select-all').title = `Select ${plural(visibleIds().length, 'visible student')}`;
 }

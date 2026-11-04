@@ -39,7 +39,10 @@ export type SetupStatus =
 export type PromptCard =
   | { id: string; kind: 'message'; from: string; text: string; at: number }
   | { id: string; kind: 'poll'; pollId: string; from: string; question: string; choices: string[]; answer: number | null }
-  | { id: string; kind: 'hand' };
+  | { id: string; kind: 'hand' }
+  | { id: string; kind: 'sign-in'; registerId: string; from: string; name: string; done: boolean; error: string | null }
+  | { id: string; kind: 'file'; from: string; name: string; path: string }
+  | { id: string; kind: 'collect'; collectId: string; title: string; from: string; handedIn: string[]; sending: string[]; error: string | null };
 
 export interface ChatLine {
   id: string;
@@ -77,7 +80,7 @@ export interface StudentApi {
   // Prompt window
   promptsReady(): void;
   onPrompts(listener: (cards: PromptCard[]) => void): void;
-  promptAction(id: string, action: string, value?: number): void;
+  promptAction(id: string, action: string, value?: number | string): void;
   /** Reports the content height so the window can fit it. */
   promptsSize(height: number): void;
 
