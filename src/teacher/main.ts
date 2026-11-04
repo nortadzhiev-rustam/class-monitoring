@@ -145,7 +145,9 @@ function registerIpc(): void {
   on('teacher:forget', (id: string) => roster.forget(id));
   on('teacher:lock', (target: Target, message: string) => server.setPolicy(asTarget(target), { lock: lockText(message) }));
   on('teacher:unlock', (target: Target) => server.setPolicy(asTarget(target), { lock: null }));
-  on('teacher:view-start', (id: string, sessionId: string) => server.send(id, { type: 'view-start', sessionId }));
+  on('teacher:view-start', (id: string, sessionId: string, displayId?: string) =>
+    server.send(id, { type: 'view-start', sessionId, ...(typeof displayId === 'string' ? { displayId: displayId.slice(0, 32) } : {}) }),
+  );
   on('teacher:view-stop', (id: string, sessionId: string) => server.send(id, { type: 'view-stop', sessionId }));
   on('teacher:control', (id: string, sessionId: string, enabled: boolean) => {
     setControlling(enabled);
@@ -295,6 +297,7 @@ app.whenReady().then(async () => {
   });
   server.on('file', (id, msg, payload) => files.handle(id, msg, payload));
   server.on('app-closed', (id, name) => emit({ type: 'app-closed', id, name }));
+  server.on('info', (id, info) => emit({ type: 'info', id, info }));
   server.on('sign-in', (id, registerId, name) => {
     roster.setName(id, name);
     emit({ type: 'sign-in', id, registerId, name });

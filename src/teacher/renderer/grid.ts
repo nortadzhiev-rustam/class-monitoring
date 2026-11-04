@@ -148,6 +148,7 @@ function badges(s: Student): HTMLElement[] {
   if (s.status.controlled) result.push(pill('Being controlled', 'chat'));
   else if (s.status.locked) result.push(pill('Locked'));
   if (s.unread) result.push(pill(`${s.unread} new message${s.unread === 1 ? '' : 's'}`, 'chat'));
+  if (s.displays.length > 1) result.push(pill(`${s.displays.length} screens`, 'chat'));
   if (s.policy.apps) result.push(pill('Apps blocked'));
   if (s.answer !== null) result.push(pill(s.answer, 'answer'));
   return result;

@@ -1,7 +1,8 @@
 // Every student the console knows about: the saved roster merged with live
 // connection state. The grid, targets and panels render from here.
 
-import { OPEN_POLICY, type Platform, type Policy } from '../../shared/protocol';
+import type { DisplayInfo } from '../../shared/displays';
+import { OPEN_POLICY, type Platform, type Policy, type StudentInfo } from '../../shared/protocol';
 import type { RosterEntry, StudentStatus, StudentSummary } from '../ipc';
 
 export interface Student {
@@ -13,6 +14,8 @@ export interface Student {
   lastSeen: number;
   /** Name the student signed in with, if any. */
   name?: string;
+  /** The student's monitors (empty while offline). */
+  displays: DisplayInfo[];
   online: boolean;
   status: StudentStatus;
   policy: Policy;
@@ -61,7 +64,7 @@ export function all(): Student[] {
 }
 
 function fromEntry(entry: RosterEntry): Student {
-  return { ...entry, online: false, status: OFFLINE_STATUS, policy: OPEN_POLICY, handSince: null, unread: 0, answer: null };
+  return { ...entry, displays: [], online: false, status: OFFLINE_STATUS, policy: OPEN_POLICY, handSince: null, unread: 0, answer: null };
 }
 
 export function load(roster: RosterEntry[], online: StudentSummary[]): void {
@@ -83,6 +86,7 @@ function setOnline(summary: StudentSummary, entry?: RosterEntry): void {
     hostname: info.hostname,
     username: info.username,
     platform: info.platform,
+    displays: info.displays,
     address: summary.address,
     lastSeen: Date.now(),
     online: true,
@@ -115,6 +119,14 @@ export function patch(id: string, extras: Partial<Extras>): void {
   const s = students.get(id);
   if (!s) return;
   students.set(id, { ...s, ...extras });
+  changed(id);
+}
+
+/** Updated details from a connected student (e.g. a monitor was plugged in). */
+export function setInfo(id: string, info: StudentInfo): void {
+  const s = students.get(id);
+  if (!s) return;
+  students.set(id, { ...s, hostname: info.hostname, username: info.username, displays: info.displays });
   changed(id);
 }
 

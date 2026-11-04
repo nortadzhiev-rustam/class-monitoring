@@ -23,14 +23,6 @@ let modifierFlags: [CGKeyCode: CGEventFlags] = [
   0x37: .maskCommand, 0x36: .maskCommand,
 ]
 
-/// Maps 0..1 coordinates onto the main display (the one the teacher sees).
-func displayPoint(_ x: Double, _ y: Double) -> CGPoint {
-  let bounds = CGDisplayBounds(CGMainDisplayID())
-  return CGPoint(
-    x: bounds.minX + min(1, max(0, x)) * (bounds.width - 1),
-    y: bounds.minY + min(1, max(0, y)) * (bounds.height - 1))
-}
-
 func post(_ event: CGEvent?, _ description: @autoclosure () -> String) {
   guard let event = event else { return }
   if dryRun {
@@ -110,11 +102,13 @@ while let line = readLine() {
     return max(-1_000_000, min(1_000_000, value))
   }
 
+  // Coordinates are global desktop points (negative for screens left of or
+  // above the main one); "-" means wherever the pointer is now.
   switch command {
   case "m":
-    move(to: displayPoint(number(1), number(2)))
+    move(to: CGPoint(x: number(1), y: number(2)))
   case "b":
-    let point = number(3) < 0 || number(4) < 0 ? lastPoint : displayPoint(number(3), number(4))
+    let point = parts.count > 3 && parts[3] == "-" ? lastPoint : CGPoint(x: number(3), y: number(4))
     if point != lastPoint { move(to: point) }
     press(Int(number(1)), down: number(2) == 1, at: point, clicks: Int(number(5)))
   case "w":

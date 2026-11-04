@@ -9,6 +9,8 @@ import type { Student } from './store';
 interface Viewer {
   id: string;
   sessionId: string;
+  /** The student's monitor being shown; undefined means their main one. */
+  displayId: string | undefined;
   peer: Peer;
   control: boolean;
   buttons: Set<number>;
@@ -29,18 +31,20 @@ export function init(options: { toggleLock: (s: Student) => void; dialogOpen: ()
   onToggleLock = options.toggleLock;
   dialogOpen = options.dialogOpen;
   store.onChange((id) => {
-    if (viewer && (id === null || id === viewer.id)) renderStatus();
+    if (!viewer || (id !== null && id !== viewer.id)) return;
+    renderStatus();
+    renderScreens();
   });
 }
 
 export const viewingId = () => viewer?.id ?? null;
 
-export function open(s: Student, control: boolean): void {
+export function open(s: Student, control: boolean, displayId?: string): void {
   close();
   const id = s.id;
   const sessionId = crypto.randomUUID();
   const peer = new Peer((signal) => api.signal(id, sessionId, signal));
-  viewer = { id, sessionId, peer, control: false, buttons: new Set(), keys: new Set() };
+  viewer = { id, sessionId, displayId, peer, control: false, buttons: new Set(), keys: new Set() };
 
   peer.pc.ontrack = (e) => {
     video.srcObject = e.streams[0] ?? new MediaStream([e.track]);
@@ -57,9 +61,39 @@ export function open(s: Student, control: boolean): void {
   $('#viewer-name').textContent = store.displayName(s);
   $('#viewer-meta').textContent = `${s.username} · ${OS_LABEL[s.platform] ?? s.platform} · ${s.address}`;
   renderStatus();
+  renderScreens();
   viewerEl.hidden = false;
-  api.viewStart(id, sessionId);
+  api.viewStart(id, sessionId, displayId);
   if (control) setControl(true);
+}
+
+/** Tabs for each of the student's monitors, main one first; hidden with a single monitor. */
+function renderScreens(): void {
+  const s = viewer && store.get(viewer.id);
+  const tabs = $('#viewer-screens');
+  const displays = [...(s?.displays ?? [])].sort((a, b) => Number(b.primary) - Number(a.primary) || a.bounds.x - b.bounds.x);
+  tabs.hidden = displays.length < 2;
+  if (!viewer || displays.length < 2) return;
+  const showing = viewer.displayId ?? displays[0].id;
+  tabs.replaceChildren(
+    ...displays.map((d, i) => {
+      const button = Object.assign(document.createElement('button'), { type: 'button', textContent: `Screen ${i + 1}` });
+      button.title = `${d.bounds.width}×${d.bounds.height}${d.primary ? ' (main screen)' : ''}`;
+      button.dataset.display = d.id;
+      button.setAttribute('role', 'tab');
+      button.setAttribute('aria-selected', String(d.id === showing));
+      button.addEventListener('click', () => switchTo(d.id));
+      return button;
+    }),
+  );
+}
+
+/** Restarts the stream on another monitor, keeping remote control if it was on. */
+function switchTo(displayId: string): void {
+  const s = viewer && store.get(viewer.id);
+  if (!s || !viewer) return;
+  const showing = viewer.displayId ?? s.displays.find((d) => d.primary)?.id;
+  if (showing !== displayId) open(s, viewer.control, displayId);
 }
 
 export function close(): void {

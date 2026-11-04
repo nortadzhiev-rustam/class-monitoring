@@ -13,6 +13,7 @@ const info = (id: string, hostname: string): StudentInfo => ({
   platform: 'win32',
   screen: { width: 1920, height: 1080 },
   macs: ['aa:bb:cc:dd:ee:ff'],
+  displays: [{ id: '1', primary: true, bounds: { x: 0, y: 0, width: 1920, height: 1080 } }],
   version: '0.1.0',
 });
 

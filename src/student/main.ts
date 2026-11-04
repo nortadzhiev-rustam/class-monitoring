@@ -52,6 +52,11 @@ function macAddresses(): string[] {
   return [...macs];
 }
 
+function displays(): StudentInfo['displays'] {
+  const primary = screen.getPrimaryDisplay().id;
+  return screen.getAllDisplays().map((d) => ({ id: String(d.id), bounds: d.bounds, primary: d.id === primary }));
+}
+
 function studentInfo(id: string): StudentInfo {
   const { width, height } = screen.getPrimaryDisplay().size;
   return {
@@ -61,6 +66,7 @@ function studentInfo(id: string): StudentInfo {
     platform: process.platform as Platform,
     screen: { width, height },
     macs: macAddresses(),
+    displays: displays(),
     version: app.getVersion(),
   };
 }
@@ -131,7 +137,7 @@ function onTeacherMessage(msg: TeacherMessage, payload: Buffer | undefined): voi
       applyPolicy(msg.policy);
       break;
     case 'view-start':
-      session.startView(msg.sessionId);
+      void session.startView(msg.sessionId, typeof msg.displayId === 'string' ? msg.displayId : undefined);
       break;
     case 'view-stop':
       session.endView(msg.sessionId);
@@ -268,6 +274,11 @@ app.whenReady().then(() => {
     updateTray();
     refreshChat();
   });
+  // Monitors plugged in, removed or rearranged: the teacher's thumbnail and screen list follow.
+  const displaysChanged = () => state.link?.connected && send({ type: 'info', info: studentInfo(studentId()) });
+  screen.on('display-added', displaysChanged);
+  screen.on('display-removed', displaysChanged);
+  screen.on('display-metrics-changed', displaysChanged);
 
   if (!app.isPackaged) {
     // Escape hatch while developing the lock screen.

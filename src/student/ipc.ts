@@ -12,7 +12,8 @@ export interface OverlayState {
   primary: boolean;
 }
 
-export type ViewCommand = { type: 'start' | 'stop'; sessionId: string };
+/** `sourceId` is the desktopCapturer id of the monitor to stream. */
+export type ViewCommand = { type: 'start'; sessionId: string; sourceId: string } | { type: 'stop'; sessionId: string };
 
 /** A teacher console heard on the network. */
 export interface DiscoveredClass {

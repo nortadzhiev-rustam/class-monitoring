@@ -227,6 +227,9 @@ api.onEvent((event: TeacherEvent) => {
     case 'collected':
       handouts.collected(event.id, event.collectId, event.name);
       break;
+    case 'info':
+      store.setInfo(event.id, event.info);
+      break;
     case 'app-closed': {
       const s = store.get(event.id);
       toast(`${s ? store.displayName(s) : 'A student'} tried to open ${event.name}; it was closed.`, 'info');

@@ -98,7 +98,8 @@ export type TeacherEvent =
   /** A student handed in a file for the current collection. */
   | { type: 'collected'; id: string; collectId: string; name: string; size: number }
   /** The student's computer closed a blocked app. */
-  | { type: 'app-closed'; id: string; name: string };
+  | { type: 'app-closed'; id: string; name: string }
+  | { type: 'info'; id: string; info: StudentInfo };
 
 export interface TeacherApi {
   state(): Promise<TeacherState>;
@@ -108,7 +109,8 @@ export interface TeacherApi {
   forget(id: string): void;
   lock(target: Target, message: string): void;
   unlock(target: Target): void;
-  viewStart(id: string, sessionId: string): void;
+  /** `displayId` picks one of the student's monitors; the primary one when omitted. */
+  viewStart(id: string, sessionId: string, displayId?: string): void;
   viewStop(id: string, sessionId: string): void;
   /** While enabled, the main process mutes the console's own shortcuts so keys reach the student. */
   control(id: string, sessionId: string, enabled: boolean): void;

@@ -193,6 +193,36 @@ await step('closing the viewer ends the session', async () => {
   await page.waitForSelector('#viewer', { state: 'hidden' });
 });
 
+await step(
+  'with two monitors: composite thumbnail, screen switcher, control on screen 2',
+  async () => {
+    const displays = await student.evaluate(({ screen }) =>
+      screen.getAllDisplays().map((d) => ({ id: String(d.id), bounds: d.bounds, primary: d.id === screen.getPrimaryDisplay().id })),
+    );
+    if (displays.length < 2) throw new Error(`skipped: this computer has ${displays.length} display`);
+    await page.waitForSelector(`${card('student')} .pill:has-text("${displays.length} screens")`, { timeout: 10_000 });
+    const second = displays.find((d) => !d.primary);
+    await page.hover(`${card('student')} .screen`);
+    await page.click(`${card('student')} [data-action="view"]`);
+    await page.waitForSelector('#viewer-screens:not([hidden]) button', { timeout: 10_000 });
+    await page.click(`#viewer-screens button[data-display="${second.id}"]`);
+    await page.waitForFunction(() => document.querySelector('#viewer-video').videoWidth > 0, null, { timeout: 15_000 });
+    await page.click('#viewer-control');
+    helperLog.length = 0;
+    const box = await page.locator('#stage').boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await waitFor(async () => /move -?\d+ -?\d+/.test(helperLog.join('')));
+    const [, x, y] = /move (-?\d+) (-?\d+)/.exec(helperLog.join(''));
+    const b = second.bounds;
+    if (!(x >= b.x && x < b.x + b.width && y >= b.y && y < b.y + b.height)) throw new Error(`pointer went to ${x},${y}, outside screen 2 (${JSON.stringify(b)})`);
+    await page.screenshot({ path: path.join(out, '17-second-screen.png') });
+    await page.click('#viewer-control');
+    await page.click('#viewer-close');
+    return `pointer at ${x},${y} on screen 2`;
+  },
+  { soft: true },
+);
+
 await step('broadcast shows the teacher screen on the student', async () => {
   await page.click('#broadcast');
   await page.waitForSelector('#banner:not([hidden])', { timeout: 10_000 });

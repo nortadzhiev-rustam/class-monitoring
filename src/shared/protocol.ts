@@ -1,6 +1,8 @@
 // Messages exchanged between the teacher console and student agents.
 // Everything after the handshake travels inside a SecureChannel (see secure-channel.ts).
 
+import type { DisplayInfo } from './displays';
+
 export const APP_ID = 'class-monitor';
 /** Teacher and students must match; bump on any incompatible message change. */
 export const PROTOCOL_VERSION = 2;
@@ -30,6 +32,8 @@ export interface StudentInfo {
   screen: { width: number; height: number };
   /** Network adapter MAC addresses, for Wake-on-LAN. */
   macs: string[];
+  /** Every monitor, as the OS arranges them. */
+  displays: DisplayInfo[];
   version: string;
 }
 
@@ -117,7 +121,8 @@ export type TeacherMessage =
   | { type: 'welcome'; teacher: string; room: string }
   | { type: 'policy'; policy: Policy }
   | { type: 'thumb-config'; intervalMs: number; width: number }
-  | { type: 'view-start'; sessionId: string }
+  /** `displayId` picks the monitor; the primary one when omitted. */
+  | { type: 'view-start'; sessionId: string; displayId?: string }
   | { type: 'view-stop'; sessionId: string }
   | { type: 'control'; sessionId: string; enabled: boolean; teacherPlatform: Platform }
   | { type: 'input'; sessionId: string; events: InputEvent[] }

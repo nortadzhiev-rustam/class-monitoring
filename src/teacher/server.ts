@@ -51,6 +51,8 @@ export interface ServerEvents {
   'poll-answer': [string, string, number];
   'sign-in': [string, string, string];
   'app-closed': [string, string];
+  /** A student's details changed (e.g. a monitor was plugged in). */
+  info: [string, StudentInfo];
   file: [string, FileMessage, Buffer | undefined];
   /** A computer at this address tried to join with a different protocol version. */
   'version-mismatch': [string];
@@ -293,7 +295,9 @@ export class ClassServer extends EventEmitter<ServerEvents> {
         break;
       case 'info': {
         const info = sanitizeInfo(msg.info);
-        if (info && info.id === id) student.info = info;
+        if (!info || info.id !== id) break;
+        student.info = info;
+        this.emit('info', id, info);
         break;
       }
     }
@@ -344,6 +348,7 @@ const text = (v: unknown, max: number) => (typeof v === 'string' ? v.slice(0, ma
 function sanitizeInfo(raw: StudentInfo): StudentInfo | null {
   if (!raw || typeof raw.id !== 'string' || !/^[\w-]{8,64}$/.test(raw.id)) return null;
   const dim = (n: unknown) => (Number.isFinite(n) ? Math.max(0, Math.min(100_000, Number(n))) : 0);
+  const coord = (n: unknown) => (Number.isFinite(n) ? Math.max(-100_000, Math.min(100_000, Number(n))) : 0);
   return {
     id: raw.id,
     hostname: text(raw.hostname, 80) || 'Unknown computer',
@@ -351,6 +356,14 @@ function sanitizeInfo(raw: StudentInfo): StudentInfo | null {
     platform: PLATFORMS.includes(raw.platform) ? raw.platform : 'linux',
     screen: { width: dim(raw.screen?.width), height: dim(raw.screen?.height) },
     macs: (Array.isArray(raw.macs) ? raw.macs : []).filter((m) => typeof m === 'string' && /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/i.test(m)).slice(0, 8),
+    displays: (Array.isArray(raw.displays) ? raw.displays : [])
+      .filter((d) => d && typeof d.id === 'string' && d.bounds)
+      .slice(0, 8)
+      .map((d) => ({
+        id: d.id.slice(0, 32),
+        primary: d.primary === true,
+        bounds: { x: coord(d.bounds.x), y: coord(d.bounds.y), width: dim(d.bounds.width) || 1, height: dim(d.bounds.height) || 1 },
+      })),
     version: text(raw.version, 20),
   };
 }

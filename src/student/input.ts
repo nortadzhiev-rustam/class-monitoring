@@ -1,7 +1,8 @@
 // Injects the teacher's mouse and keyboard input through a small per-OS helper
 // process (see native/), fed one command per line on stdin:
-//   m <x> <y>                     move pointer (0..1 across the primary display)
-//   b <button> <down> <x> <y> <n> button 0/1/2, down 1/0, click count n; x < 0 = current position
+//   m <x> <y>                     move pointer to desktop coordinates (macOS points,
+//                                 Windows physical pixels; negative left of/above the main screen)
+//   b <button> <down> <x> <y> <n> button 0/1/2, down 1/0, click count n; x y = "- -" for where the pointer is
 //   w <dx> <dy>                   scroll by pixels (DOM wheel deltas)
 //   k <code> <down> <extended>    native key code (macOS kVK / Windows VK)
 //   r                             release every held key and button
@@ -31,7 +32,9 @@ function helperCommand(): { command: string; args: string[] } | null {
 }
 
 const num = (n: number, digits = 0) => (Number.isFinite(n) ? n.toFixed(digits) : '0');
-const unit = (n: number) => num(Math.min(1, Math.max(0, n)), 5);
+
+/** Turns 0..1 coordinates on the viewed monitor into desktop coordinates. */
+export type ToDesktop = (nx: number, ny: number) => { x: number; y: number };
 
 export class InputInjector {
   private helper: ChildProcessWithoutNullStreams | null = null;
@@ -58,15 +61,20 @@ export class InputInjector {
     this.helper = null;
   }
 
-  inject(events: InputEvent[], teacherPlatform: Platform): void {
+  inject(events: InputEvent[], teacherPlatform: Platform, toDesktop: ToDesktop): void {
+    const at = (x: number, y: number) => {
+      const p = toDesktop(x, y);
+      return `${num(p.x, 1)} ${num(p.y, 1)}`;
+    };
     for (const e of events) {
       switch (e.t) {
         case 'move':
-          this.write(`m ${unit(e.x)} ${unit(e.y)}`);
+          this.write(`m ${at(e.x, e.y)}`);
           break;
         case 'button': {
-          const at = e.x < 0 || e.y < 0 ? '-1 -1' : `${unit(e.x)} ${unit(e.y)}`;
-          this.write(`b ${e.button === 2 ? 2 : e.button === 1 ? 1 : 0} ${e.down ? 1 : 0} ${at} ${num(Math.min(3, e.clicks))}`);
+          // The teacher sends x/y < 0 to mean "wherever the pointer is" (releasing held buttons).
+          const where = e.x < 0 || e.y < 0 ? '- -' : at(e.x, e.y);
+          this.write(`b ${e.button === 2 ? 2 : e.button === 1 ? 1 : 0} ${e.down ? 1 : 0} ${where} ${num(Math.min(3, e.clicks))}`);
           break;
         }
         case 'wheel':

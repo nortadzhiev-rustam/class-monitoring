@@ -694,3 +694,10 @@ code { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 0.9
 .batches .failed { color: var(--danger); font-size: 12px; overflow-wrap: anywhere; }
 .batches .track { height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
 .batches .fill { height: 100%; background: var(--accent); transition: width 200ms; }
+
+/* ---------- viewer screen switcher ---------- */
+
+.screens { display: flex; gap: 2px; padding: 2px; margin-left: 12px; border-radius: 8px; background: var(--surface-2); -webkit-app-region: no-drag; }
+.screens[hidden] { display: none; }
+.screens button { height: 26px; padding: 0 10px; border: 0; border-radius: 6px; background: none; color: var(--muted); font-weight: 600; cursor: pointer; }
+.screens button[aria-selected="true"] { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
