@@ -701,3 +701,6 @@ code { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 0.9
 .screens[hidden] { display: none; }
 .screens button { height: 26px; padding: 0 10px; border: 0; border-radius: 6px; background: none; color: var(--muted); font-weight: 600; cursor: pointer; }
 .screens button[aria-selected="true"] { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+
+.radio { display: flex; align-items: center; gap: 8px; font-weight: 400; cursor: pointer; }
+.radio input { margin: 0; accent-color: var(--accent); }

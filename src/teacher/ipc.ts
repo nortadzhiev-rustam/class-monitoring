@@ -1,6 +1,7 @@
 // Types shared by the teacher's main process, preload and renderer.
 
-import type { Collect, InputEvent, Platform, Policy, Poll, PowerAction, RtcSignal, StudentInfo } from '../shared/protocol';
+import type { Collect, InputEvent, Platform, Policy, Poll, PowerAction, RtcSignal, StudentInfo, WebStatus } from '../shared/protocol';
+import type { WebRules } from '../shared/web-rules';
 
 export interface StudentStatus {
   locked: boolean;
@@ -99,7 +100,9 @@ export type TeacherEvent =
   | { type: 'collected'; id: string; collectId: string; name: string; size: number }
   /** The student's computer closed a blocked app. */
   | { type: 'app-closed'; id: string; name: string }
-  | { type: 'info'; id: string; info: StudentInfo };
+  | { type: 'info'; id: string; info: StudentInfo }
+  /** The student's browser, as reported by the web filter extension. */
+  | { type: 'web'; id: string; status: WebStatus };
 
 export interface TeacherApi {
   state(): Promise<TeacherState>;
@@ -145,5 +148,7 @@ export interface TeacherApi {
   setApps(target: Target, apps: string[] | null): void;
   /** Wake-on-LAN for offline students; resolves to how many computers were sent a packet. */
   wake(ids: string[]): Promise<number>;
+  /** Website rules for the target (null: open browsing). */
+  setWeb(target: Target, rules: WebRules | null): void;
   onEvent(listener: (event: TeacherEvent) => void): void;
 }

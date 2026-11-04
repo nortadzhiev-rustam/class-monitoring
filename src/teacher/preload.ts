@@ -35,6 +35,7 @@ const api: TeacherApi = {
   power: (target, action) => ipcRenderer.invoke('teacher:power', target, action),
   setApps: (target, apps) => ipcRenderer.send('teacher:set-apps', target, apps),
   wake: (ids) => ipcRenderer.invoke('teacher:wake', ids),
+  setWeb: (target, rules) => ipcRenderer.send('teacher:set-web', target, rules),
   onEvent: (listener) => {
     ipcRenderer.on('teacher:event', (_e, event: TeacherEvent) => listener(event));
   },

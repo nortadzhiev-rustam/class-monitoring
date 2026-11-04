@@ -16,6 +16,8 @@ export interface StudentConfig {
   teacherPort: number;
   /** Overrides the computer name shown to the teacher. */
   displayName?: string;
+  /** IDs of the published web filter extension (Chrome Web Store, Edge Add-ons) allowed to connect. */
+  extensionIds?: string[];
 }
 
 export function systemConfigPath(): string {
@@ -89,5 +91,11 @@ export function loadStudentConfig(userDataDir: string): StudentConfig | null {
     teacherHost: merged.teacherHost?.trim() || undefined,
     teacherPort: Number(merged.teacherPort) || CONTROL_PORT,
     displayName: merged.displayName?.trim() || undefined,
+    extensionIds: [
+      ...(Array.isArray(merged.extensionIds) ? merged.extensionIds : []),
+      ...(process.env.CM_EXTENSION_IDS ?? '').split(','),
+    ]
+      .map((id) => String(id).trim())
+      .filter((id) => /^[a-p]{32}$/.test(id)),
   };
 }

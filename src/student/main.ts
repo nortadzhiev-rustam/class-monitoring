@@ -8,6 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { configureApp, shareScreenWithoutPicker } from '../shared/electron-setup';
 import { LIMITS, type Platform, type Policy, type RtcSignal, type StudentInfo, type TeacherMessage } from '../shared/protocol';
+import { OTHER_BROWSERS } from '../shared/web-rules';
 import { setBlockedApps } from './app-blocker';
 import { initChat, openChat, receiveChat, refreshChat, resetChat } from './chat';
 import { isManagedConfig, loadStudentConfig, type StudentConfig } from './config';
@@ -15,6 +16,7 @@ import { TeacherLink } from './connection';
 import { handleFileMessage, resetFiles, showCollect } from './files';
 import { handNote, lowerHand } from './hand';
 import { openApp, openUrl } from './launch';
+import { isNativeHostLaunch, runNativeHost } from './native-host';
 import { Overlay } from './overlay';
 import { schedulePower } from './power';
 import { initPrompts, onPromptAction, removePrompt, removePrompts, showPrompt } from './prompts';
@@ -24,10 +26,14 @@ import { canOfferSetup, confirmUserConfig, initSetup, openSetup, sendSetupStatus
 import { changed, onChange, send, state } from './state';
 import { configure as configureThumbnails, startThumbnails } from './thumbnails';
 import { createTray, popUpTray, updateTray } from './tray';
+import { registerNativeHost, reportWebStatus, setWebRules, startWebBridge } from './web';
 
 configureApp('Student');
 
-if (!app.requestSingleInstanceLock()) app.exit(0);
+/** Started by Chrome/Edge for the web filter extension: only relay, nothing else. */
+const nativeHost = isNativeHostLaunch(process.argv);
+if (nativeHost) runNativeHost(app.getPath('userData'));
+else if (!app.requestSingleInstanceLock()) app.exit(0);
 
 const preload = path.join(__dirname, 'preload.js');
 let overlay: Overlay;
@@ -86,7 +92,10 @@ function applyPolicy(policy: Policy): void {
   showPoll(policy.poll);
   void showRegister(policy.register);
   showCollect(policy.collect);
-  setBlockedApps(policy.apps);
+  // While website rules are on, other browsers are closed so they can't be used instead.
+  const apps = [...(policy.apps ?? []), ...(policy.web?.closeOtherBrowsers ? OTHER_BROWSERS : [])];
+  setBlockedApps(apps.length ? apps : null);
+  setWebRules(policy.web);
   changed();
 }
 
@@ -128,6 +137,7 @@ function onTeacherMessage(msg: TeacherMessage, payload: Buffer | undefined): voi
     case 'welcome':
       state.teacher = { name: msg.teacher, room: msg.room };
       overlay.setTeacher(msg.teacher);
+      reportWebStatus(true);
       changed();
       break;
     case 'thumb-config':
@@ -190,6 +200,7 @@ function resetSession(): void {
   session.endAll();
   overlay.clear();
   setBlockedApps(null);
+  setWebRules(null);
   // Cards that only make sense while the teacher is there go away with them.
   removePrompts((c) => c.kind === 'poll' || c.kind === 'sign-in' || c.kind === 'collect');
   resetFiles();
@@ -258,6 +269,7 @@ app.on('window-all-closed', () => {});
 
 app.whenReady().then(() => {
   app.dock?.hide();
+  if (nativeHost) return;
   Menu.setApplicationMenu(null);
   if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: true });
   shareScreenWithoutPicker();
@@ -286,7 +298,11 @@ app.whenReady().then(() => {
   }
 
   state.managed = isManagedConfig();
-  const saved = loadStudentConfig(app.getPath('userData'));
+  const userData = app.getPath('userData');
+  const saved = loadStudentConfig(userData);
+  startWebBridge(userData);
+  // Development and tests leave the user's own Chrome/Edge settings alone unless asked.
+  if (app.isPackaged || process.env.CM_REGISTER_HOST === '1') registerNativeHost(userData, saved?.extensionIds ?? []);
   if (saved) startLink(saved);
   else openSetup();
   startThumbnails();

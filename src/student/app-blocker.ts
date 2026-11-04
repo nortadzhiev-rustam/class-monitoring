@@ -41,7 +41,7 @@ function run(command: string, args: string[]): Promise<string> {
 }
 
 /** The current user's running programs. */
-async function processes(): Promise<Array<{ pid: number; path: string }>> {
+export async function runningProcesses(): Promise<Array<{ pid: number; path: string }>> {
   if (process.platform === 'win32') {
     // "steam.exe","1234","Console","1","50,000 K"
     const out = await run('tasklist', ['/fo', 'csv', '/nh', '/fi', `USERNAME eq ${process.env.USERNAME ?? ''}`]);
@@ -63,7 +63,7 @@ async function sweep(): Promise<void> {
   if (sweeping || !blocked.length) return;
   sweeping = true;
   try {
-    for (const p of await processes()) {
+    for (const p of await runningProcesses()) {
       if (p.pid === process.pid || p.pid === process.ppid || !blockedBy(p.path, blocked)) continue;
       try {
         process.kill(p.pid);

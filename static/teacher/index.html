@@ -31,6 +31,7 @@
     <symbol id="i-open" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol>
     <symbol id="i-block" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M6.5 6.5l11 11"/></symbol>
     <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3v9M7.5 6.5a7 7 0 1 0 9 0"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.6 3.5 5.4 3.5 8.5s-1 5.9-3.5 8.5c-2.5-2.6-3.5-5.4-3.5-8.5s1-5.9 3.5-8.5z"/></symbol>
     <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="6.5" height="6.5" rx="1"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1"/></symbol>
   </svg>
 
@@ -81,6 +82,7 @@
     <span class="divider"></span>
     <button class="btn" id="open" type="button"><svg class="icon"><use href="#i-open"/></svg>Open<svg class="icon caret"><use href="#i-down"/></svg></button>
     <button class="btn" id="apps" type="button"><svg class="icon"><use href="#i-block"/></svg>Block apps</button>
+    <button class="btn" id="web" type="button"><svg class="icon"><use href="#i-globe"/></svg>Websites</button>
     <button class="btn" id="power" type="button"><svg class="icon"><use href="#i-power"/></svg>Power<svg class="icon caret"><use href="#i-down"/></svg></button>
   </div>
 
@@ -291,6 +293,33 @@
         <button class="btn" value="cancel" type="submit">Cancel</button>
         <button class="btn" value="off" type="submit" id="apps-off">Stop blocking</button>
         <button class="btn primary" value="on" type="submit" id="apps-on"><svg class="icon"><use href="#i-block"/></svg>Block these apps</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="web-dialog">
+    <form method="dialog">
+      <h2 id="web-title">Websites for everyone</h2>
+      <div class="field">
+        <span>Rule</span>
+        <label class="radio"><input type="radio" name="web-mode" value="block" checked> Block these sites</label>
+        <label class="radio"><input type="radio" name="web-mode" value="allow"> Only allow these sites</label>
+      </div>
+      <label class="field">
+        <span>Sites, one per line (subdomains are included)</span>
+        <textarea id="web-list" rows="6" spellcheck="false" placeholder="youtube.com&#10;tiktok.com"></textarea>
+      </label>
+      <div class="presets" id="web-presets">
+        <button class="chip-btn" type="button" data-sites="youtube.com|twitch.tv|netflix.com|tiktok.com">+ Video</button>
+        <button class="chip-btn" type="button" data-sites="facebook.com|instagram.com|x.com|twitter.com|snapchat.com|reddit.com">+ Social media</button>
+        <button class="chip-btn" type="button" data-sites="poki.com|coolmathgames.com|crazygames.com|roblox.com|miniclip.com">+ Games</button>
+      </div>
+      <label class="radio"><input type="checkbox" id="web-close-others" checked> Also close Firefox, Safari and other browsers the filter can't reach</label>
+      <p class="muted small">Works in Chrome and Edge with the ClassMonitor Web Filter extension installed. Cards say <strong>Web filter missing</strong> where it isn't.</p>
+      <menu>
+        <button class="btn" value="cancel" type="submit">Cancel</button>
+        <button class="btn" value="off" type="submit" id="web-off">Allow all sites</button>
+        <button class="btn primary" value="on" type="submit" id="web-on"><svg class="icon"><use href="#i-globe"/></svg>Apply</button>
       </menu>
     </form>
   </dialog>

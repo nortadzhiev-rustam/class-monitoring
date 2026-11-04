@@ -8,12 +8,15 @@
 
 import { _electron as electron } from 'playwright-core';
 import { spawn } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import dgram from 'node:dgram';
+import { createRequire } from 'node:module';
+import net from 'node:net';
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+const electronPath = createRequire(import.meta.url)('electron');
 const out = path.resolve('tests/output');
 mkdirSync(out, { recursive: true });
 const tmp = mkdtempSync(path.join(os.tmpdir(), 'class-monitor-e2e-'));
@@ -394,6 +397,71 @@ await step('power controls warn the student first (dry run)', async () => {
   await prompts.screenshot({ path: path.join(out, '16-power-warning.png') });
   await waitFor(async () => studentLog().includes('[power] restart (dry run)'), 10_000);
   await prompts.waitForSelector('.card.power', { state: 'detached' });
+});
+
+await step('the web filter bridge refuses programs without the secret', async () => {
+  // Same socket name the student app derives from its profile folder (see native-host.ts).
+  const tag = createHash('sha256').update(path.join(tmp, 'student')).digest('hex').slice(0, 12);
+  const socket = net.connect(path.join(os.tmpdir(), `classmonitor-web-${tag}.sock`));
+  let data = '';
+  socket.on('data', (d) => (data += d));
+  socket.on('error', () => {});
+  await new Promise((resolve) => socket.on('connect', resolve));
+  socket.write(`${JSON.stringify({ type: 'auth', secret: 'f'.repeat(64) })}\n`);
+  await new Promise((resolve, reject) => {
+    socket.on('close', resolve);
+    setTimeout(() => reject(new Error('the bridge kept an unauthenticated connection open')), 7000);
+  });
+  if (data) throw new Error(`the bridge answered without the secret: ${data}`);
+});
+
+await step('the web filter bridge carries rules down and the site up (simulated browser)', async () => {
+  // Start the student app the way Chrome does for the extension, and speak native messaging to it.
+  const host = spawn(electronPath, ['dist/student/main.js', 'chrome-extension://lhfcpffeneandjbmhgdgdoajgcloccih/'], {
+    env: studentEnv('student'),
+    stdio: ['pipe', 'pipe', 'ignore'],
+  });
+  const fromAgent = [];
+  let pending = Buffer.alloc(0);
+  host.stdout.on('data', (chunk) => {
+    pending = Buffer.concat([pending, chunk]);
+    while (pending.length >= 4 && pending.length >= 4 + pending.readUInt32LE(0)) {
+      const length = pending.readUInt32LE(0);
+      fromAgent.push(JSON.parse(pending.subarray(4, 4 + length).toString('utf8')));
+      pending = pending.subarray(4 + length);
+    }
+  });
+  const toAgent = (message) => {
+    const body = Buffer.from(JSON.stringify(message));
+    const header = Buffer.alloc(4);
+    header.writeUInt32LE(body.length);
+    host.stdin.write(Buffer.concat([header, body]));
+  };
+  const rulesFor = (domain) => fromAgent.some((m) => m.type === 'rules' && m.rules?.domains?.includes(domain));
+  try {
+    await waitFor(async () => fromAgent.some((m) => m.type === 'rules'), 15_000);
+    toAgent({ type: 'hello', version: '0.1.0' });
+    toAgent({ type: 'tab', url: 'https://www.example.org/page', title: 'Example Domain' });
+    await page.waitForSelector(`${card('student')} .pill:has-text("example.org")`, { timeout: 10_000 });
+
+    await page.click('#web');
+    await page.fill('#web-list', 'https://www.youtube.com/watch?v=1');
+    // Leave the tester's own Safari/Firefox alone: this agent runs on their Mac.
+    await page.uncheck('#web-close-others');
+    await page.click('#web-on');
+    await waitFor(async () => rulesFor('youtube.com'));
+    await page.waitForSelector(`${card('student')} .pill:has-text("Web rules on")`);
+    await page.screenshot({ path: path.join(out, '18-web-rules.png') });
+
+    await page.click('#web');
+    await page.click('#web-off');
+    await waitFor(async () => fromAgent.at(-1)?.type === 'rules' && fromAgent.at(-1).rules === null);
+  } finally {
+    host.kill();
+  }
+  // Extension gone: the site disappears from the card.
+  await page.waitForSelector(`${card('student')} .pill:has-text("example.org")`, { state: 'detached', timeout: 10_000 });
+  return `${fromAgent.length} messages from the agent`;
 });
 
 await step('a student with the wrong class key is refused', async () => {

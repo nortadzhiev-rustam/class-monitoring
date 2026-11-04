@@ -138,6 +138,8 @@ function setControl(enabled: boolean): void {
 function renderStatus(): void {
   const s = viewer && store.get(viewer.id);
   if (!s) return;
+  const site = s.web?.url ? ` · ${s.web.url}` : '';
+  $('#viewer-meta').textContent = `${s.username} · ${OS_LABEL[s.platform] ?? s.platform} · ${s.address}${site}`;
   const locked = s.policy.lock !== null;
   const lock = $('#viewer-lock');
   lock.querySelector('span')!.textContent = locked ? 'Unlock' : 'Lock';

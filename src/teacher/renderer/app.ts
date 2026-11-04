@@ -141,6 +141,7 @@ $('#files').addEventListener('click', () =>
 
 $('#open').addEventListener('click', () => control.openMenu($('#open'), targets.current()));
 $('#apps').addEventListener('click', () => control.blockApps(targets.current()));
+$('#web').addEventListener('click', () => control.webRules(targets.current()));
 $('#power').addEventListener('click', () => control.powerMenu($('#power'), targets.current()));
 
 $('#select-all').addEventListener('click', () => targets.selectAll(grid.visibleIds()));
@@ -229,6 +230,9 @@ api.onEvent((event: TeacherEvent) => {
       break;
     case 'info':
       store.setInfo(event.id, event.info);
+      break;
+    case 'web':
+      store.setWeb(event.id, event.status);
       break;
     case 'app-closed': {
       const s = store.get(event.id);

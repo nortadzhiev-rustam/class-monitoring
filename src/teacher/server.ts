@@ -20,6 +20,7 @@ import {
   type StudentInfo,
   type StudentMessage,
   type TeacherMessage,
+  type WebStatus,
 } from '../shared/protocol';
 import type { FileLink } from '../shared/file-transfer';
 import { acceptStudent, CLOSE_REPLACED, deriveClassKey, type SecureChannel } from '../shared/secure-channel';
@@ -53,6 +54,7 @@ export interface ServerEvents {
   'app-closed': [string, string];
   /** A student's details changed (e.g. a monitor was plugged in). */
   info: [string, StudentInfo];
+  web: [string, WebStatus];
   file: [string, FileMessage, Buffer | undefined];
   /** A computer at this address tried to join with a different protocol version. */
   'version-mismatch': [string];
@@ -270,6 +272,16 @@ export class ClassServer extends EventEmitter<ServerEvents> {
       case 'file-ack':
         this.emit('file', id, msg, payload);
         break;
+      case 'web': {
+        const url = typeof msg.url === 'string' && /^https?:\/\//.test(msg.url) ? msg.url.slice(0, 2000) : null;
+        this.emit('web', id, {
+          extension: msg.extension === true,
+          browserOpen: msg.browserOpen === true,
+          url,
+          title: url && typeof msg.title === 'string' ? msg.title.slice(0, 200) : null,
+        });
+        break;
+      }
       case 'app-closed':
         if (typeof msg.name === 'string' && this.policies.get(id).apps) this.emit('app-closed', id, msg.name.slice(0, 60));
         break;

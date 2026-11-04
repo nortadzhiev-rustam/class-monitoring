@@ -1,5 +1,6 @@
 // Toolbar actions that act on the students' computers themselves: open a
-// website or app, block apps, and power (log off, restart, shut down, wake).
+// website or app, block apps, website rules, and power (log off, restart,
+// shut down, wake).
 
 import type { PowerAction } from '../../shared/protocol';
 import { askConfirm, askText } from './dialogs';
@@ -87,6 +88,59 @@ appsDialog.addEventListener('close', () => {
     api.setApps(to.target, apps);
     toast(`Blocking ${plural(apps.length, 'app')} for ${forWhom(to)}.`, 'info');
   }
+});
+
+// ---------------------------------------------------------------- websites
+
+const webDialog = $<HTMLDialogElement>('#web-dialog');
+const webList = $<HTMLTextAreaElement>('#web-list');
+const closeOthers = $<HTMLInputElement>('#web-close-others');
+let webTarget: Resolved | null = null;
+
+const webMode = () => (document.querySelector<HTMLInputElement>('input[name="web-mode"]:checked')?.value === 'allow' ? 'allow' : 'block');
+
+export function webRules(to: Resolved): void {
+  webTarget = to;
+  $('#web-title').textContent = `Websites for ${forWhom(to)}`;
+  webList.value = prefs.get('webSites') ?? '';
+  const mode = prefs.get('webMode') === 'allow' ? 'allow' : 'block';
+  for (const radio of document.querySelectorAll<HTMLInputElement>('input[name="web-mode"]')) radio.checked = radio.value === mode;
+  closeOthers.checked = prefs.get('webCloseOthers') !== 'false';
+  webDialog.returnValue = '';
+  webDialog.showModal();
+  webList.focus();
+}
+
+for (const preset of $('#web-presets').querySelectorAll<HTMLElement>('[data-sites]')) {
+  preset.addEventListener('click', () => {
+    webList.value = lines(`${webList.value}\n${preset.dataset.sites!.split('|').join('\n')}`).join('\n');
+  });
+}
+
+webDialog.addEventListener('close', () => {
+  const to = webTarget;
+  webTarget = null;
+  if (!to) return;
+  if (webDialog.returnValue === 'off') {
+    api.setWeb(to.target, null);
+    toast(`All websites allowed again for ${forWhom(to)}.`, 'info');
+    return;
+  }
+  if (webDialog.returnValue !== 'on') return;
+  const domains = lines(webList.value);
+  const mode = webMode();
+  if (mode === 'block' && !domains.length) {
+    toast('Add at least one site to block.');
+    return;
+  }
+  prefs.set('webSites', domains.join('\n'));
+  prefs.set('webMode', mode);
+  prefs.set('webCloseOthers', String(closeOthers.checked));
+  api.setWeb(to.target, { mode, domains, closeOtherBrowsers: closeOthers.checked });
+  toast(
+    mode === 'block' ? `Blocking ${plural(domains.length, 'site')} for ${forWhom(to)}.` : `Only ${plural(domains.length, 'site')} allowed for ${forWhom(to)}.`,
+    'info',
+  );
 });
 
 // ---------------------------------------------------------------- power

@@ -2,6 +2,7 @@
 // Everything after the handshake travels inside a SecureChannel (see secure-channel.ts).
 
 import type { DisplayInfo } from './displays';
+import type { WebRules } from './web-rules';
 
 export const APP_ID = 'class-monitor';
 /** Teacher and students must match; bump on any incompatible message change. */
@@ -55,9 +56,21 @@ export interface Policy {
   collect: Collect | null;
   /** Apps closed whenever they start, or null when nothing is blocked. */
   apps: string[] | null;
+  /** Website rules applied by the browser extension, or null for open browsing. */
+  web: WebRules | null;
 }
 
-export const OPEN_POLICY: Policy = { lock: null, broadcast: null, poll: null, register: null, collect: null, apps: null };
+export const OPEN_POLICY: Policy = { lock: null, broadcast: null, poll: null, register: null, collect: null, apps: null, web: null };
+
+/** The student's browser as seen through the web filter extension. */
+export interface WebStatus {
+  /** The extension is installed and talking to the student app. */
+  extension: boolean;
+  /** Chrome or Edge is running (checked while website rules are on). */
+  browserOpen: boolean;
+  url: string | null;
+  title: string | null;
+}
 
 export type PowerAction = 'logoff' | 'restart' | 'shutdown';
 
@@ -149,5 +162,6 @@ export type StudentMessage =
   | { type: 'sign-in'; registerId: string; name: string }
   /** A blocked app was closed on the student's computer. */
   | { type: 'app-closed'; name: string }
+  | ({ type: 'web' } & WebStatus)
   | FileMessage
   | { type: 'error'; sessionId?: string; message: string };

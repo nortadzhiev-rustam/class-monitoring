@@ -16,7 +16,10 @@ export function toast(message: string, kind: 'error' | 'info' = 'error'): void {
   const el = document.createElement('div');
   el.className = `toast ${kind}`;
   el.textContent = message;
-  $('#toasts').append(el);
+  const stack = $('#toasts');
+  stack.append(el);
+  // Keep a burst of actions from covering the window.
+  while (stack.childElementCount > 4) stack.firstElementChild?.remove();
   setTimeout(() => el.remove(), 7000);
 }
 

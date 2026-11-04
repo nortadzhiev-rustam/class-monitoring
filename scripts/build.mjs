@@ -33,6 +33,9 @@ await build({
     'student/setup': 'src/student/renderer/setup.ts',
     'student/prompts': 'src/student/renderer/prompts.ts',
     'student/chat': 'src/student/renderer/chat.ts',
+    // Chrome/Edge web filter extension: load dist/extension unpacked, or zip it for the stores.
+    'extension/background': 'src/extension/background.ts',
+    'extension/blocked': 'src/extension/blocked.ts',
   },
   outdir: 'dist',
 });

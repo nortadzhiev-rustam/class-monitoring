@@ -2,7 +2,7 @@
 // connection state. The grid, targets and panels render from here.
 
 import type { DisplayInfo } from '../../shared/displays';
-import { OPEN_POLICY, type Platform, type Policy, type StudentInfo } from '../../shared/protocol';
+import { OPEN_POLICY, type Platform, type Policy, type StudentInfo, type WebStatus } from '../../shared/protocol';
 import type { RosterEntry, StudentStatus, StudentSummary } from '../ipc';
 
 export interface Student {
@@ -16,6 +16,8 @@ export interface Student {
   name?: string;
   /** The student's monitors (empty while offline). */
   displays: DisplayInfo[];
+  /** The student's browser via the web filter extension; null until it reports. */
+  web: WebStatus | null;
   online: boolean;
   status: StudentStatus;
   policy: Policy;
@@ -64,7 +66,7 @@ export function all(): Student[] {
 }
 
 function fromEntry(entry: RosterEntry): Student {
-  return { ...entry, displays: [], online: false, status: OFFLINE_STATUS, policy: OPEN_POLICY, handSince: null, unread: 0, answer: null };
+  return { ...entry, displays: [], web: null, online: false, status: OFFLINE_STATUS, policy: OPEN_POLICY, handSince: null, unread: 0, answer: null };
 }
 
 export function load(roster: RosterEntry[], online: StudentSummary[]): void {
@@ -80,6 +82,7 @@ function setOnline(summary: StudentSummary, entry?: RosterEntry): void {
   students.set(info.id, {
     unread: 0,
     answer: null,
+    web: null,
     ...known,
     handSince: summary.status.hand === null ? null : (known?.handSince ?? Date.now()),
     id: info.id,
@@ -103,7 +106,7 @@ export function joined(summary: StudentSummary, entry: RosterEntry): void {
 export function left(id: string): void {
   const s = students.get(id);
   if (!s) return;
-  students.set(id, { ...s, online: false, lastSeen: Date.now(), status: OFFLINE_STATUS, handSince: null });
+  students.set(id, { ...s, online: false, lastSeen: Date.now(), status: OFFLINE_STATUS, handSince: null, web: null });
   changed(id);
 }
 
@@ -127,6 +130,13 @@ export function setInfo(id: string, info: StudentInfo): void {
   const s = students.get(id);
   if (!s) return;
   students.set(id, { ...s, hostname: info.hostname, username: info.username, displays: info.displays });
+  changed(id);
+}
+
+export function setWeb(id: string, web: WebStatus): void {
+  const s = students.get(id);
+  if (!s) return;
+  students.set(id, { ...s, web });
   changed(id);
 }
 

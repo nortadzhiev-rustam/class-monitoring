@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "ClassMonitor Web Filter",
+  "version": "0.1.0",
+  "description": "Applies your teacher's website rules during class. Works together with the ClassMonitor Student app.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnSGqW10c1hfb+sjhWtjOJ3gElpKlcpZGkGTSfVorHZlmqTciAVZ2LDRobgfGY8YsiYa2ZdGM3Qf3WjCWz5kNnUGx+04CQBcCObgrz+9Et6psqI37HwBgh3Gj1Ho6qz2a6dQs8a8k7/2+yVnv4o0FqoUpt4T77+lVjA7fpfYw9gAg8nmv+xEiT4yU8BsQvVVJ4pyAKtoQ1rQnm/n9kmLs/BXooYb/GoVBVw9Fp1GFqdxAOPVHcziAx+lK+RK9uLuP+gOgFaD7O7G2JJgcSM7NQG+14NSwYivAZoagLe10Rm3s5bVTL9CT4rWIi+FVhDGncHRBGrVfRjPS4+uambjcgwIDAQAB",
+  "minimum_chrome_version": "116",
+  "background": { "service_worker": "background.js" },
+  "permissions": ["declarativeNetRequest", "nativeMessaging", "tabs", "alarms"],
+  "host_permissions": ["<all_urls>"],
+  "web_accessible_resources": [
+    { "resources": ["blocked.html", "blocked.css", "blocked.js"], "matches": ["<all_urls>"] }
+  ]
+}

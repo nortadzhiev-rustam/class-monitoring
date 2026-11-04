@@ -7,6 +7,7 @@ import { pickFiles, pickSavePath } from '../shared/native-dialogs';
 import { randomUUID } from 'node:crypto';
 import { APP_NAME, CONTROL_PORT, LIMITS, type InputEvent, type Platform, type Poll, type PowerAction, type RtcSignal } from '../shared/protocol';
 import { generateClassKey } from '../shared/secure-channel';
+import { cleanRules, type WebRules } from '../shared/web-rules';
 import { toCsv } from './csv';
 import { TeacherFiles } from './files';
 import type { ChatMessage, Group, Target, TeacherEvent, TeacherSettings, TeacherState } from './ipc';
@@ -252,6 +253,7 @@ function registerIpc(): void {
     const list = Array.isArray(apps) ? [...new Set(apps.map((a) => clip(a, 60)).filter((a) => APP_NAME.test(a)))].slice(0, LIMITS.blockedApps) : [];
     server.setPolicy(asTarget(target), { apps: list.length ? list : null });
   });
+  on('teacher:set-web', (target: Target, rules: WebRules | null) => server.setPolicy(asTarget(target), { web: cleanRules(rules) }));
   handle('teacher:wake', async (ids: string[]) => {
     const computers = (Array.isArray(ids) ? ids : []).map((id) => roster.get(String(id))).filter((e) => e?.macs.length);
     await wake(computers.flatMap((e) => e!.macs));
@@ -298,6 +300,7 @@ app.whenReady().then(async () => {
   server.on('file', (id, msg, payload) => files.handle(id, msg, payload));
   server.on('app-closed', (id, name) => emit({ type: 'app-closed', id, name }));
   server.on('info', (id, info) => emit({ type: 'info', id, info }));
+  server.on('web', (id, status) => emit({ type: 'web', id, status }));
   server.on('sign-in', (id, registerId, name) => {
     roster.setName(id, name);
     emit({ type: 'sign-in', id, registerId, name });
