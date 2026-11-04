@@ -49,9 +49,16 @@ export interface Policy {
   register: string | null;
   /** Work the teacher is collecting, or null. */
   collect: Collect | null;
+  /** Apps closed whenever they start, or null when nothing is blocked. */
+  apps: string[] | null;
 }
 
-export const OPEN_POLICY: Policy = { lock: null, broadcast: null, poll: null, register: null, collect: null };
+export const OPEN_POLICY: Policy = { lock: null, broadcast: null, poll: null, register: null, collect: null, apps: null };
+
+export type PowerAction = 'logoff' | 'restart' | 'shutdown';
+
+/** App names as shown in Task Manager / Activity Monitor; `*` is a wildcard. */
+export const APP_NAME = /^[\w .+&()'*-]{1,60}$/;
 
 export interface Collect {
   collectId: string;
@@ -73,6 +80,10 @@ export const LIMITS = {
   pollChoices: 6,
   name: 60,
   collectTitle: 80,
+  url: 2000,
+  blockedApps: 50,
+  /** Seconds of warning before a power action. */
+  powerDelayMax: 120,
   /** Largest single file sent or collected. */
   fileBytes: 200 * 1024 * 1024,
 } as const;
@@ -115,6 +126,9 @@ export type TeacherMessage =
   | { type: 'chat'; id: string; text: string; at: number }
   /** The teacher has dealt with the student's raised hand. */
   | { type: 'hand-clear' }
+  | { type: 'open-url'; url: string }
+  | { type: 'open-app'; name: string }
+  | { type: 'power'; action: PowerAction; delay: number }
   | FileMessage;
 
 export type StudentMessage =
@@ -128,5 +142,7 @@ export type StudentMessage =
   | { type: 'chat'; id: string; text: string; at: number }
   | { type: 'poll-answer'; pollId: string; choice: number }
   | { type: 'sign-in'; registerId: string; name: string }
+  /** A blocked app was closed on the student's computer. */
+  | { type: 'app-closed'; name: string }
   | FileMessage
   | { type: 'error'; sessionId?: string; message: string };

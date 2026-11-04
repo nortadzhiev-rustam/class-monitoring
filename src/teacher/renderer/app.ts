@@ -4,6 +4,7 @@
 import type { TeacherEvent, TeacherState } from '../ipc';
 import * as broadcast from './broadcast';
 import * as chat from './chat';
+import * as control from './control';
 import * as dialogs from './dialogs';
 import { $, api, errorText, plural, toast } from './dom';
 import * as grid from './grid';
@@ -76,7 +77,13 @@ function cardMenu(s: Student, at: HTMLElement | { x: number; y: number }): void 
     });
   }
   items.push({ label: `New group with ${who}…`, action: () => void createGroup(ids) });
-  if (!s.online) items.push('separator', { label: 'Forget this computer', danger: true, action: () => forget(s) });
+  if (!s.online) {
+    items.push(
+      'separator',
+      { label: 'Wake up', action: () => void control.wakeUp(ids) },
+      { label: 'Forget this computer', danger: true, action: () => forget(s) },
+    );
+  }
   showMenu(at, items);
 }
 
@@ -104,6 +111,7 @@ grid.init({
   forget,
   chat: (s) => chat.openThread(s.id),
   menu: cardMenu,
+  wake: (s) => void control.wakeUp([s.id]),
 });
 groups.init({ create: () => void createGroup(targets.selectedIds()), menu: groupMenu });
 register.init({ newRegister: () => void register.start(targets.current()) });
@@ -130,6 +138,10 @@ $('#files').addEventListener('click', () =>
     { label: 'Collect work…', action: () => void handouts.collect(targets.current()) },
   ]),
 );
+
+$('#open').addEventListener('click', () => control.openMenu($('#open'), targets.current()));
+$('#apps').addEventListener('click', () => control.blockApps(targets.current()));
+$('#power').addEventListener('click', () => control.powerMenu($('#power'), targets.current()));
 
 $('#select-all').addEventListener('click', () => targets.selectAll(grid.visibleIds()));
 $('#select-none').addEventListener('click', () => targets.clear());
@@ -215,6 +227,11 @@ api.onEvent((event: TeacherEvent) => {
     case 'collected':
       handouts.collected(event.id, event.collectId, event.name);
       break;
+    case 'app-closed': {
+      const s = store.get(event.id);
+      toast(`${s ? store.displayName(s) : 'A student'} tried to open ${event.name}; it was closed.`, 'info');
+      break;
+    }
     case 'version-mismatch':
       if (versionWarned.has(event.address)) break;
       versionWarned.add(event.address);

@@ -1,6 +1,6 @@
 // The grid of student cards: thumbnails, status, selection and per-card actions.
 
-import { $, OS_LABEL, plural, timeAgo } from './dom';
+import { $, OS_LABEL, plural, prefs, timeAgo } from './dom';
 import * as groups from './groups';
 import * as store from './store';
 import type { Student } from './store';
@@ -12,6 +12,7 @@ export interface CardActions {
   forget(s: Student): void;
   chat(s: Student): void;
   menu(s: Student, at: HTMLElement | { x: number; y: number }): void;
+  wake(s: Student): void;
 }
 
 interface Card {
@@ -26,20 +27,8 @@ const cardTemplate = $<HTMLTemplateElement>('#card-template');
 const showOfflineInput = $<HTMLInputElement>('#show-offline');
 let actions: CardActions;
 
-const remembered = (key: string) => {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-};
-const remember = (key: string, value: string) => {
-  try {
-    localStorage.setItem(key, value);
-  } catch {
-    // Storage unavailable; the preference just isn't remembered.
-  }
-};
+const remembered = prefs.get;
+const remember = prefs.set;
 
 export function init(cardActions: CardActions): void {
   actions = cardActions;
@@ -99,6 +88,7 @@ function createCard(id: string): Card {
     if (action === 'lock') actions.toggleLock(s);
     else if (action === 'forget') actions.forget(s);
     else if (action === 'chat') actions.chat(s);
+    else if (action === 'wake') actions.wake(s);
     else if (action === 'more') actions.menu(s, clicked.closest<HTMLElement>('[data-action]')!);
     else if (s.online && clicked.closest('.screen')) actions.view(s, action === 'control');
   });
@@ -158,6 +148,7 @@ function badges(s: Student): HTMLElement[] {
   if (s.status.controlled) result.push(pill('Being controlled', 'chat'));
   else if (s.status.locked) result.push(pill('Locked'));
   if (s.unread) result.push(pill(`${s.unread} new message${s.unread === 1 ? '' : 's'}`, 'chat'));
+  if (s.policy.apps) result.push(pill('Apps blocked'));
   if (s.answer !== null) result.push(pill(s.answer, 'answer'));
   return result;
 }

@@ -50,6 +50,7 @@ export interface ServerEvents {
   chat: [string, { id: string; text: string; at: number }];
   'poll-answer': [string, string, number];
   'sign-in': [string, string, string];
+  'app-closed': [string, string];
   file: [string, FileMessage, Buffer | undefined];
   /** A computer at this address tried to join with a different protocol version. */
   'version-mismatch': [string];
@@ -266,6 +267,9 @@ export class ClassServer extends EventEmitter<ServerEvents> {
       case 'file-end':
       case 'file-ack':
         this.emit('file', id, msg, payload);
+        break;
+      case 'app-closed':
+        if (typeof msg.name === 'string' && this.policies.get(id).apps) this.emit('app-closed', id, msg.name.slice(0, 60));
         break;
       case 'poll-answer': {
         const poll = this.policies.get(id).poll;

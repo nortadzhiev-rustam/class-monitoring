@@ -111,6 +111,27 @@ function render(card: PromptCard): HTMLElement {
           button('Open', () => api.promptAction(card.id, 'open'), true),
         ),
       );
+    case 'notice':
+      return el(
+        'article',
+        { className: 'card notice' },
+        header(card.title),
+        el('p', { className: 'hint', textContent: card.text }),
+        el('footer', {}, button('OK', () => api.promptAction(card.id, 'dismiss'))),
+      );
+    case 'power': {
+      const verb = { logoff: 'log you off', restart: 'restart this computer', shutdown: 'shut down this computer' }[card.action];
+      const count = el('p', { className: 'countdown', textContent: '' });
+      count.dataset.deadline = String(card.deadline);
+      tick(count);
+      return el(
+        'article',
+        { className: 'card power' },
+        header(`Your teacher will ${verb}`),
+        count,
+        el('p', { className: 'hint', textContent: 'Save your work now.' }),
+      );
+    }
     case 'collect': {
       const node = el('article', { className: 'card collect' }, header(`Hand in work for ${card.from}`), el('p', { className: 'question', textContent: card.title }));
       const items = el('ul', { className: 'files' });
@@ -128,6 +149,12 @@ function render(card: PromptCard): HTMLElement {
     }
   }
 }
+
+function tick(node: HTMLElement): void {
+  const seconds = Math.max(0, Math.ceil((Number(node.dataset.deadline) - Date.now()) / 1000));
+  node.textContent = seconds ? `in ${seconds} second${seconds === 1 ? '' : 's'}` : 'now';
+}
+setInterval(() => root.querySelectorAll<HTMLElement>('.countdown').forEach(tick), 250);
 
 /** Cards already on screen; only new ones slide in, so updates don't flicker. */
 let shown = new Set<string>();

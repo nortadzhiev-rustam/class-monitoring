@@ -1,6 +1,6 @@
 // Types shared by the teacher's main process, preload and renderer.
 
-import type { Collect, InputEvent, Platform, Policy, Poll, RtcSignal, StudentInfo } from '../shared/protocol';
+import type { Collect, InputEvent, Platform, Policy, Poll, PowerAction, RtcSignal, StudentInfo } from '../shared/protocol';
 
 export interface StudentStatus {
   locked: boolean;
@@ -96,7 +96,9 @@ export type TeacherEvent =
   | { type: 'sign-in'; id: string; registerId: string; name: string }
   | { type: 'transfer'; transfer: Transfer }
   /** A student handed in a file for the current collection. */
-  | { type: 'collected'; id: string; collectId: string; name: string; size: number };
+  | { type: 'collected'; id: string; collectId: string; name: string; size: number }
+  /** The student's computer closed a blocked app. */
+  | { type: 'app-closed'; id: string; name: string };
 
 export interface TeacherApi {
   state(): Promise<TeacherState>;
@@ -133,5 +135,13 @@ export interface TeacherApi {
   collectStart(target: Target, title: string): Promise<Collect & { folder: string }>;
   collectEnd(): void;
   openFolder(folder: string): void;
+  /** These resolve to how many online students were reached. */
+  openUrl(target: Target, url: string): Promise<number>;
+  openApp(target: Target, name: string): Promise<number>;
+  power(target: Target, action: PowerAction): Promise<number>;
+  /** Blocks these apps for the target (null turns blocking off). */
+  setApps(target: Target, apps: string[] | null): void;
+  /** Wake-on-LAN for offline students; resolves to how many computers were sent a packet. */
+  wake(ids: string[]): Promise<number>;
   onEvent(listener: (event: TeacherEvent) => void): void;
 }

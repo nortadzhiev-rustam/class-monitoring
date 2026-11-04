@@ -1,7 +1,7 @@
 // Types shared by the student's main process, preload and renderers
 // (the hidden capture window, the lock/broadcast overlays and the setup window).
 
-import type { RtcSignal } from '../shared/protocol';
+import type { PowerAction, RtcSignal } from '../shared/protocol';
 
 export interface OverlayState {
   mode: 'lock' | 'broadcast';
@@ -42,7 +42,9 @@ export type PromptCard =
   | { id: string; kind: 'hand' }
   | { id: string; kind: 'sign-in'; registerId: string; from: string; name: string; done: boolean; error: string | null }
   | { id: string; kind: 'file'; from: string; name: string; path: string }
-  | { id: string; kind: 'collect'; collectId: string; title: string; from: string; handedIn: string[]; sending: string[]; error: string | null };
+  | { id: string; kind: 'collect'; collectId: string; title: string; from: string; handedIn: string[]; sending: string[]; error: string | null }
+  | { id: string; kind: 'notice'; title: string; text: string }
+  | { id: string; kind: 'power'; action: PowerAction; deadline: number };
 
 export interface ChatLine {
   id: string;

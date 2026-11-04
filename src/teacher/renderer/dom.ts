@@ -36,3 +36,21 @@ export function timeAgo(timestamp: number): string {
 }
 
 export const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+/** Per-console conveniences (thumbnail size, last URL...); fine to lose. */
+export const prefs = {
+  get(key: string): string | null {
+    try {
+      return localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  },
+  set(key: string, value: string): void {
+    try {
+      localStorage.setItem(key, value);
+    } catch {
+      // Storage unavailable; the preference just isn't remembered.
+    }
+  },
+};

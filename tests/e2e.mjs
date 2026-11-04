@@ -7,8 +7,10 @@
 // over the screen. Screenshots go to tests/output/.
 
 import { _electron as electron } from 'playwright-core';
+import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import dgram from 'node:dgram';
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -32,7 +34,18 @@ const base = {
   CM_INPUT_DRY_RUN: '1',
   // No desktop notifications or Dock bouncing while the test runs.
   CM_QUIET: '1',
+  // Log instead of opening the browser or restarting this computer.
+  CM_LAUNCH_DRY_RUN: '1',
+  CM_POWER_DRY_RUN: '1',
+  CM_POWER_DELAY: '2',
+  CM_WOL_PORT: '47899',
 };
+
+// Wake-on-LAN packets arrive here instead of waking anything.
+const wolPackets = [];
+const wolSocket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
+wolSocket.on('message', (packet) => wolPackets.push(packet));
+await new Promise((resolve) => wolSocket.bind(47899, resolve));
 
 let failures = 0;
 async function step(name, fn, { soft = false } = {}) {
@@ -300,6 +313,59 @@ await step('collected work lands in the teacher\'s folder', async () => {
   return path.relative(tmp, file);
 });
 
+const studentLog = () => helperLog.join('');
+
+await step('opening a website and an app reaches the student (dry run)', async () => {
+  await page.click('#open');
+  await page.click('.menu button:has-text("Website")');
+  await page.fill('#text-input', 'example.org');
+  await page.click('#text-ok');
+  await page.waitForSelector('.toast.info:has-text("Opened https://example.org on 1 computer")', { timeout: 5000 });
+  await waitFor(async () => studentLog().includes('[launch] url https://example.org/'));
+  await page.click('#open');
+  await page.click('.menu button:has-text("App")');
+  await page.fill('#text-input', 'Calculator');
+  await page.click('#text-ok');
+  await waitFor(async () => studentLog().includes('[launch] app Calculator'));
+});
+
+await step('a blocked app is closed on the student', async () => {
+  const program = path.join(tmp, 'cmblockme');
+  copyFileSync('/bin/sleep', program);
+  chmodSync(program, 0o755);
+  const running = spawn(program, ['300'], { stdio: 'ignore' });
+  let exited = false;
+  running.on('exit', () => (exited = true));
+  await page.click('#apps');
+  await page.fill('#apps-list', 'cmblockme');
+  await page.click('#apps-on');
+  await waitFor(async () => exited, 15_000).catch(() => {
+    running.kill();
+    throw new Error('the blocked program kept running');
+  });
+  await page.waitForSelector(`${card('student')} .pill:has-text("Apps blocked")`);
+  await page.waitForSelector('.toast.info:has-text("tried to open cmblockme")', { timeout: 10_000 });
+  const prompts = pageOf(student, 'prompts.html');
+  await prompts.waitForSelector('.card.notice:has-text("cmblockme is blocked")');
+  await prompts.screenshot({ path: path.join(out, '15-app-blocked.png') });
+  await prompts.click('.card.notice .btn');
+  await page.click('#apps');
+  await page.click('#apps-off');
+  await page.waitForSelector(`${card('student')} .pill:has-text("Apps blocked")`, { state: 'detached', timeout: 10_000 });
+});
+
+await step('power controls warn the student first (dry run)', async () => {
+  await page.click('#power');
+  await page.click('.menu button:has-text("Restart")');
+  await page.click('#confirm-ok');
+  const prompts = pageOf(student, 'prompts.html');
+  await prompts.waitForSelector('.card.power .countdown', { timeout: 10_000 });
+  await prompts.waitForTimeout(400); // let the window grow to fit the card
+  await prompts.screenshot({ path: path.join(out, '16-power-warning.png') });
+  await waitFor(async () => studentLog().includes('[power] restart (dry run)'), 10_000);
+  await prompts.waitForSelector('.card.power', { state: 'detached' });
+});
+
 await step('a student with the wrong class key is refused', async () => {
   const intruder = await launchStudent('intruder', { CM_CLASS_KEY: 'wrong-key', CM_TEACHER_HOST: '127.0.0.1' });
   await page.waitForTimeout(5000);
@@ -397,6 +463,11 @@ await step('disconnected students stay as offline cards until forgotten', async 
   await page.waitForSelector(`${card('newcomer')}.offline`, { timeout: 10_000 });
   const placeholder = await page.textContent(`${card('newcomer')} .placeholder`);
   await page.screenshot({ path: path.join(out, '6-offline-cards.png') });
+  await page.hover(`${card('newcomer')} .screen`);
+  await page.click(`${card('newcomer')} [data-action="wake"]`);
+  await waitFor(async () => wolPackets.some((p) => p.length === 102 && p.subarray(0, 6).every((b) => b === 0xff)), 5000).catch(() => {
+    throw new Error('no Wake-on-LAN packet arrived');
+  });
   await page.click('#show-offline');
   await page.waitForSelector(card('newcomer'), { state: 'detached' });
   await page.click('#show-offline');
@@ -425,6 +496,7 @@ await step('the roster survives a teacher restart', async () => {
 });
 
 await student.close();
+wolSocket.close();
 console.log(failures ? `\n${failures} step(s) failed` : '\nAll steps passed');
 console.log(`Screenshots: ${out}`);
 process.exit(failures ? 1 : 0);

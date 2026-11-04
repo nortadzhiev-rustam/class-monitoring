@@ -8,12 +8,15 @@ import os from 'node:os';
 import path from 'node:path';
 import { configureApp, shareScreenWithoutPicker } from '../shared/electron-setup';
 import { LIMITS, type Platform, type Policy, type RtcSignal, type StudentInfo, type TeacherMessage } from '../shared/protocol';
+import { setBlockedApps } from './app-blocker';
 import { initChat, openChat, receiveChat, refreshChat, resetChat } from './chat';
 import { isManagedConfig, loadStudentConfig, type StudentConfig } from './config';
 import { TeacherLink } from './connection';
 import { handleFileMessage, resetFiles, showCollect } from './files';
 import { handNote, lowerHand } from './hand';
+import { openApp, openUrl } from './launch';
 import { Overlay } from './overlay';
+import { schedulePower } from './power';
 import { initPrompts, onPromptAction, removePrompt, removePrompts, showPrompt } from './prompts';
 import { showRegister } from './register';
 import * as session from './session';
@@ -77,6 +80,7 @@ function applyPolicy(policy: Policy): void {
   showPoll(policy.poll);
   void showRegister(policy.register);
   showCollect(policy.collect);
+  setBlockedApps(policy.apps);
   changed();
 }
 
@@ -157,6 +161,15 @@ function onTeacherMessage(msg: TeacherMessage, payload: Buffer | undefined): voi
     case 'hand-clear':
       lowerHand();
       break;
+    case 'open-url':
+      openUrl(msg.url);
+      break;
+    case 'open-app':
+      openApp(msg.name);
+      break;
+    case 'power':
+      schedulePower(msg.action, msg.delay);
+      break;
     case 'file-start':
     case 'file-chunk':
     case 'file-end':
@@ -170,6 +183,7 @@ function onTeacherMessage(msg: TeacherMessage, payload: Buffer | undefined): voi
 function resetSession(): void {
   session.endAll();
   overlay.clear();
+  setBlockedApps(null);
   // Cards that only make sense while the teacher is there go away with them.
   removePrompts((c) => c.kind === 'poll' || c.kind === 'sign-in' || c.kind === 'collect');
   resetFiles();

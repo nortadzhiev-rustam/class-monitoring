@@ -66,3 +66,6 @@ html, body { min-height: 0; overflow: hidden; }
 .card .file-name { font-weight: 600; }
 .card .files { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; font-size: 13px; overflow-wrap: anywhere; }
 .card .files .ok { color: var(--ok); }
+
+.card.notice .badge-dot, .card.power .badge-dot { background: var(--danger); }
+.card .countdown { margin: 0; font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }

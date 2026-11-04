@@ -74,6 +74,28 @@ textDialog.addEventListener('close', () => {
   resolve?.(textDialog.returnValue === 'ok' && value ? value : null);
 });
 
+// ---------------------------------------------------------------- confirm
+
+const confirmDialog = $<HTMLDialogElement>('#confirm-dialog');
+let onConfirm: ((ok: boolean) => void) | null = null;
+
+/** Asks before something that can't be undone; resolves true only if confirmed. */
+export function askConfirm(title: string, text: string, confirm: string): Promise<boolean> {
+  onConfirm?.(false);
+  $('#confirm-title').textContent = title;
+  $('#confirm-text').textContent = text;
+  $('#confirm-ok').textContent = confirm;
+  confirmDialog.returnValue = '';
+  confirmDialog.showModal();
+  return new Promise((resolve) => (onConfirm = resolve));
+}
+
+confirmDialog.addEventListener('close', () => {
+  const resolve = onConfirm;
+  onConfirm = null;
+  resolve?.(confirmDialog.returnValue === 'ok');
+});
+
 // ---------------------------------------------------------------- settings
 
 const setRoom = $<HTMLInputElement>('#set-room');

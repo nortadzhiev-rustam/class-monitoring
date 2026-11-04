@@ -28,6 +28,9 @@
     <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2h8.5A1.5 1.5 0 0 1 21 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z"/></symbol>
     <symbol id="i-more" viewBox="0 0 24 24"><circle cx="6" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="18" cy="12" r="1.2"/></symbol>
     <symbol id="i-down" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5"/></symbol>
+    <symbol id="i-open" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol>
+    <symbol id="i-block" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M6.5 6.5l11 11"/></symbol>
+    <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3v9M7.5 6.5a7 7 0 1 0 9 0"/></symbol>
     <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="6.5" height="6.5" rx="1"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1"/></symbol>
   </svg>
 
@@ -75,6 +78,10 @@
     <span class="divider"></span>
     <button class="btn" id="register" type="button"><svg class="icon"><use href="#i-register"/></svg>Register</button>
     <button class="btn" id="files" type="button"><svg class="icon"><use href="#i-folder"/></svg>Files<svg class="icon caret"><use href="#i-down"/></svg></button>
+    <span class="divider"></span>
+    <button class="btn" id="open" type="button"><svg class="icon"><use href="#i-open"/></svg>Open<svg class="icon caret"><use href="#i-down"/></svg></button>
+    <button class="btn" id="apps" type="button"><svg class="icon"><use href="#i-block"/></svg>Block apps</button>
+    <button class="btn" id="power" type="button"><svg class="icon"><use href="#i-power"/></svg>Power<svg class="icon caret"><use href="#i-down"/></svg></button>
   </div>
 
   <div class="banner" id="banner" hidden>
@@ -201,6 +208,7 @@
           <button class="chip icon-chip" data-action="more" type="button" title="More"><svg class="icon"><use href="#i-more"/></svg></button>
         </div>
         <div class="hover-actions offline-only">
+          <button class="chip" data-action="wake" type="button"><svg class="icon"><use href="#i-power"/></svg>Wake</button>
           <button class="chip" data-action="forget" type="button"><svg class="icon"><use href="#i-close"/></svg>Forget</button>
           <button class="chip icon-chip" data-action="more" type="button" title="More"><svg class="icon"><use href="#i-more"/></svg></button>
         </div>
@@ -251,6 +259,37 @@
       <menu>
         <button class="btn" value="cancel" type="submit" formnovalidate>Cancel</button>
         <button class="btn primary" value="ok" type="submit" id="text-ok">OK</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="confirm-dialog">
+    <form method="dialog">
+      <h2 id="confirm-title"></h2>
+      <p class="muted" id="confirm-text"></p>
+      <menu>
+        <button class="btn" value="cancel" type="submit">Cancel</button>
+        <button class="btn danger" value="ok" type="submit" id="confirm-ok">OK</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="apps-dialog">
+    <form method="dialog">
+      <h2 id="apps-title">Block apps for everyone</h2>
+      <label class="field">
+        <span>Apps to close whenever they start, one per line</span>
+        <textarea id="apps-list" rows="6" spellcheck="false" placeholder="steam*&#10;discord&#10;minecraft*"></textarea>
+      </label>
+      <div class="presets" id="apps-presets">
+        <button class="chip-btn" type="button" data-apps="steam*|epicgameslauncher|minecraft*|roblox*|fortnite*">+ Games</button>
+        <button class="chip-btn" type="button" data-apps="discord|telegram*|whatsapp*|messenger|signal">+ Chat apps</button>
+      </div>
+      <p class="muted small">Use the name from Task Manager or Activity Monitor; <code>*</code> matches anything (<code>steam*</code>). System apps and ClassMonitor are never closed.</p>
+      <menu>
+        <button class="btn" value="cancel" type="submit">Cancel</button>
+        <button class="btn" value="off" type="submit" id="apps-off">Stop blocking</button>
+        <button class="btn primary" value="on" type="submit" id="apps-on"><svg class="icon"><use href="#i-block"/></svg>Block these apps</button>
       </menu>
     </form>
   </dialog>

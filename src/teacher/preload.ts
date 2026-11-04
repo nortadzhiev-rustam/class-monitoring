@@ -30,6 +30,11 @@ const api: TeacherApi = {
   collectStart: (target, title) => ipcRenderer.invoke('teacher:collect-start', target, title),
   collectEnd: () => ipcRenderer.send('teacher:collect-end'),
   openFolder: (folder) => ipcRenderer.send('teacher:open-folder', folder),
+  openUrl: (target, url) => ipcRenderer.invoke('teacher:open-url', target, url),
+  openApp: (target, name) => ipcRenderer.invoke('teacher:open-app', target, name),
+  power: (target, action) => ipcRenderer.invoke('teacher:power', target, action),
+  setApps: (target, apps) => ipcRenderer.send('teacher:set-apps', target, apps),
+  wake: (ids) => ipcRenderer.invoke('teacher:wake', ids),
   onEvent: (listener) => {
     ipcRenderer.on('teacher:event', (_e, event: TeacherEvent) => listener(event));
   },

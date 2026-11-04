@@ -5,13 +5,14 @@ import path from 'node:path';
 import { configureApp, shareScreenWithoutPicker } from '../shared/electron-setup';
 import { pickFiles, pickSavePath } from '../shared/native-dialogs';
 import { randomUUID } from 'node:crypto';
-import { CONTROL_PORT, LIMITS, type InputEvent, type Platform, type Poll, type RtcSignal } from '../shared/protocol';
+import { APP_NAME, CONTROL_PORT, LIMITS, type InputEvent, type Platform, type Poll, type PowerAction, type RtcSignal } from '../shared/protocol';
 import { generateClassKey } from '../shared/secure-channel';
 import { toCsv } from './csv';
 import { TeacherFiles } from './files';
 import type { ChatMessage, Group, Target, TeacherEvent, TeacherSettings, TeacherState } from './ipc';
 import { Roster } from './roster';
 import { ClassServer, type ServerConfig } from './server';
+import { wake } from './wake';
 
 configureApp('Teacher');
 
@@ -224,6 +225,36 @@ function registerIpc(): void {
   on('teacher:open-folder', (folder: string) => {
     if (files.owns(String(folder))) void shell.openPath(String(folder));
   });
+  handle('teacher:open-url', (target: Target, raw: string) => {
+    let url: URL;
+    try {
+      url = new URL(clip(raw, LIMITS.url));
+    } catch {
+      throw new Error("That web address doesn't look right.");
+    }
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('Only http and https addresses can be opened.');
+    return server.sendTo(asTarget(target), { type: 'open-url', url: url.href });
+  });
+  handle('teacher:open-app', (target: Target, raw: string) => {
+    const name = clip(raw, 60);
+    if (!APP_NAME.test(name) || name.includes('*')) throw new Error('Use the app\'s name, like Calculator or notepad.');
+    return server.sendTo(asTarget(target), { type: 'open-app', name });
+  });
+  handle('teacher:power', (target: Target, action: PowerAction) => {
+    if (!['logoff', 'restart', 'shutdown'].includes(action)) throw new Error('Unknown power action.');
+    // Students get a countdown to save their work; tests shorten it.
+    const delay = Math.min(LIMITS.powerDelayMax, Number(process.env.CM_POWER_DELAY ?? 15));
+    return server.sendTo(asTarget(target), { type: 'power', action, delay });
+  });
+  on('teacher:set-apps', (target: Target, apps: string[] | null) => {
+    const list = Array.isArray(apps) ? [...new Set(apps.map((a) => clip(a, 60)).filter((a) => APP_NAME.test(a)))].slice(0, LIMITS.blockedApps) : [];
+    server.setPolicy(asTarget(target), { apps: list.length ? list : null });
+  });
+  handle('teacher:wake', async (ids: string[]) => {
+    const computers = (Array.isArray(ids) ? ids : []).map((id) => roster.get(String(id))).filter((e) => e?.macs.length);
+    await wake(computers.flatMap((e) => e!.macs));
+    return computers.length;
+  });
   on('teacher:attention', (title: string, body?: string) => {
     // CM_QUIET keeps automated test runs from notifying whoever is at the computer.
     if (!win || win.isFocused() || process.env.CM_QUIET === '1') return;
@@ -263,6 +294,7 @@ app.whenReady().then(async () => {
     emit({ type: 'left', id });
   });
   server.on('file', (id, msg, payload) => files.handle(id, msg, payload));
+  server.on('app-closed', (id, name) => emit({ type: 'app-closed', id, name }));
   server.on('sign-in', (id, registerId, name) => {
     roster.setName(id, name);
     emit({ type: 'sign-in', id, registerId, name });
