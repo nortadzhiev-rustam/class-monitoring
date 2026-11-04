@@ -5,6 +5,24 @@
 
 import type { RtcSignal } from '../shared/protocol';
 
+/**
+ * Offers H.264 ahead of VP8. Chromium encodes H.264 on the graphics chip's
+ * media engine where there is one (VideoToolbox on Macs), while VP8 is always
+ * software; with a stream per student that is the difference between a few
+ * percent and a whole CPU core. Both sides run the same app, so H.264 is
+ * always accepted; if it's missing the browser's default (VP8) is used.
+ */
+function preferH264(transceiver: RTCRtpTransceiver): void {
+  const codecs = RTCRtpSender.getCapabilities('video')?.codecs ?? [];
+  const h264 = codecs.filter((c) => c.mimeType.toLowerCase() === 'video/h264');
+  if (!h264.length) return;
+  try {
+    transceiver.setCodecPreferences([...h264, ...codecs.filter((c) => !h264.includes(c))]);
+  } catch (err) {
+    console.warn('[peer] keeping the default codec', err);
+  }
+}
+
 export class Peer {
   readonly pc = new RTCPeerConnection({ iceServers: [] });
   private chain: Promise<void> = Promise.resolve();
@@ -18,10 +36,21 @@ export class Peer {
     for (const track of stream.getVideoTracks()) {
       track.contentHint = 'detail';
       const sender = this.pc.addTrack(track, stream);
+      const transceiver = this.pc.getTransceivers().find((t) => t.sender === sender);
+      if (transceiver) preferH264(transceiver);
+    }
+    this.setMaxBitrate(maxBitrate);
+  }
+
+  /** Caps the video this side sends; can be changed while streaming. */
+  setMaxBitrate(maxBitrate: number): void {
+    for (const sender of this.pc.getSenders()) {
+      if (sender.track?.kind !== 'video') continue;
       const params = sender.getParameters();
       params.degradationPreference = 'maintain-resolution';
-      params.encodings = [{ maxBitrate }];
-      void sender.setParameters(params).catch(() => {});
+      if (params.encodings.length) for (const encoding of params.encodings) encoding.maxBitrate = maxBitrate;
+      else params.encodings = [{ maxBitrate }];
+      void sender.setParameters(params).catch((err) => console.warn('[peer] bitrate not applied', err));
     }
   }
 

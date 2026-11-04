@@ -5,9 +5,18 @@ import type { RtcSignal } from '../../shared/protocol';
 import { $, api, toast } from './dom';
 import type { Resolved } from './targets';
 
-const BROADCAST_BITRATE = 2_500_000;
+// Every student gets their own copy of the stream, so the class shares one
+// budget: up to 12 students get the full rate, a class of 30 about 1 Mbps each,
+// and the teacher's network link never carries more than ~30 Mbps.
+const CLASS_BUDGET = 30_000_000;
+const MAX_PER_STUDENT = 2_500_000;
+const MIN_PER_STUDENT = 500_000;
 
-let broadcast: { sessionId: string; stream: MediaStream; peers: Map<string, Peer>; label: string } | null = null;
+/** Bits per second for each student when `watching` students share the budget. */
+export const perStudentBitrate = (watching: number) =>
+  Math.max(MIN_PER_STUDENT, Math.min(MAX_PER_STUDENT, Math.floor(CLASS_BUDGET / Math.max(1, watching))));
+
+let broadcast: { sessionId: string; stream: MediaStream; peers: Map<string, Peer>; bitrate: number; label: string } | null = null;
 let platform = '';
 
 export function init(teacherPlatform: string): void {
@@ -33,7 +42,7 @@ export async function start(to: Resolved): Promise<void> {
     return;
   }
   const sessionId = crypto.randomUUID();
-  broadcast = { sessionId, stream, peers: new Map(), label: to.label };
+  broadcast = { sessionId, stream, peers: new Map(), bitrate: perStudentBitrate(1), label: to.label };
   stream.getVideoTracks()[0]?.addEventListener('ended', stop);
   api.broadcastStart(to.target, sessionId);
   render();
@@ -44,9 +53,19 @@ export function connect(id: string, sessionId: string): void {
   if (!broadcast || broadcast.sessionId !== sessionId) return;
   broadcast.peers.get(id)?.close();
   const peer = new Peer((signal) => api.signal(id, sessionId, signal));
-  peer.addScreen(broadcast.stream, BROADCAST_BITRATE);
   broadcast.peers.set(id, peer);
+  peer.addScreen(broadcast.stream, perStudentBitrate(broadcast.peers.size));
   peer.offer().catch((err) => console.error('[broadcast] offer failed', err));
+  rebalance(peer);
+}
+
+/** Re-splits the class budget when a student starts or stops watching (`fresh` already has its share). */
+function rebalance(fresh?: Peer): void {
+  if (!broadcast) return;
+  const bitrate = perStudentBitrate(broadcast.peers.size);
+  if (bitrate === broadcast.bitrate) return;
+  broadcast.bitrate = bitrate;
+  for (const peer of broadcast.peers.values()) if (peer !== fresh) peer.setMaxBitrate(bitrate);
 }
 
 export function handleSignal(id: string, sessionId: string, signal: RtcSignal): boolean {
@@ -57,7 +76,7 @@ export function handleSignal(id: string, sessionId: string, signal: RtcSignal): 
 
 export function studentLeft(id: string): void {
   broadcast?.peers.get(id)?.close();
-  broadcast?.peers.delete(id);
+  if (broadcast?.peers.delete(id)) rebalance();
 }
 
 export function stop(): void {
