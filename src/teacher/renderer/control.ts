@@ -3,6 +3,7 @@
 // shut down, wake).
 
 import type { PowerAction } from '../../shared/protocol';
+import { MAX_DOMAINS, normaliseDomain } from '../../shared/web-rules';
 import { askConfirm, askText } from './dialogs';
 import { $, api, errorText, plural, prefs, toast } from './dom';
 import { showMenu } from './menu';
@@ -97,7 +98,42 @@ const webList = $<HTMLTextAreaElement>('#web-list');
 const closeOthers = $<HTMLInputElement>('#web-close-others');
 let webTarget: Resolved | null = null;
 
+const webPresets = $('#web-presets');
+const webApply = $<HTMLButtonElement>('#web-on');
+
 const webMode = () => (document.querySelector<HTMLInputElement>('input[name="web-mode"]:checked')?.value === 'allow' ? 'allow' : 'block');
+
+/** The teacher's lines as the sites the filter will use, plus the lines it can't read. */
+function parseSites(text: string): { domains: string[]; bad: string[] } {
+  const domains = new Set<string>();
+  const bad: string[] = [];
+  for (const line of lines(text)) {
+    const domain = normaliseDomain(line);
+    if (domain) domains.add(domain);
+    else bad.push(line);
+  }
+  return { domains: [...domains], bad };
+}
+
+/** Keeps the label, examples, presets, summary and Apply button in step with the rule and list. */
+function updateWebForm(): void {
+  const mode = webMode();
+  const { domains, bad } = parseSites(webList.value);
+  $('#web-list-label').textContent = mode === 'block' ? 'Sites to block, one per line' : 'Sites students can open, one per line';
+  webList.placeholder = mode === 'block' ? 'youtube.com\ntiktok.com' : 'classroom.google.com\nwikipedia.org';
+  // The presets are distractions to block; adding them to an allow-list would do the opposite.
+  webPresets.hidden = mode === 'allow';
+  const n = plural(domains.length, 'site');
+  $('#web-count').textContent =
+    mode === 'block'
+      ? domains.length ? `${n} blocked, with their subdomains.` : 'Add the sites to block.'
+      : domains.length ? `Only ${n} and their subdomains will open.` : 'No site will open in Chrome or Edge.';
+  const shown = bad.slice(0, 3).map((line) => `"${line}"`).join(', ');
+  $('#web-bad').textContent = bad.length
+    ? `Not a web address, skipped: ${shown}${bad.length > 3 ? ` and ${bad.length - 3} more` : ''}.`
+    : domains.length > MAX_DOMAINS ? `Only the first ${MAX_DOMAINS} sites are used.` : '';
+  webApply.disabled = mode === 'block' && !domains.length;
+}
 
 export function webRules(to: Resolved): void {
   webTarget = to;
@@ -106,14 +142,20 @@ export function webRules(to: Resolved): void {
   const mode = prefs.get('webMode') === 'allow' ? 'allow' : 'block';
   for (const radio of document.querySelectorAll<HTMLInputElement>('input[name="web-mode"]')) radio.checked = radio.value === mode;
   closeOthers.checked = prefs.get('webCloseOthers') !== 'false';
+  updateWebForm();
   webDialog.returnValue = '';
   webDialog.showModal();
   webList.focus();
 }
 
-for (const preset of $('#web-presets').querySelectorAll<HTMLElement>('[data-sites]')) {
+webList.addEventListener('input', updateWebForm);
+for (const radio of document.querySelectorAll<HTMLInputElement>('input[name="web-mode"]')) radio.addEventListener('change', updateWebForm);
+
+for (const preset of webPresets.querySelectorAll<HTMLElement>('[data-sites]')) {
   preset.addEventListener('click', () => {
     webList.value = lines(`${webList.value}\n${preset.dataset.sites!.split('|').join('\n')}`).join('\n');
+    webList.scrollTop = webList.scrollHeight;
+    updateWebForm();
   });
 }
 
@@ -127,13 +169,13 @@ webDialog.addEventListener('close', () => {
     return;
   }
   if (webDialog.returnValue !== 'on') return;
-  const domains = lines(webList.value);
+  const domains = parseSites(webList.value).domains.slice(0, MAX_DOMAINS);
   const mode = webMode();
   if (mode === 'block' && !domains.length) {
     toast('Add at least one site to block.');
     return;
   }
-  prefs.set('webSites', domains.join('\n'));
+  prefs.set('webSites', lines(webList.value).join('\n'));
   prefs.set('webMode', mode);
   prefs.set('webCloseOthers', String(closeOthers.checked));
   api.setWeb(to.target, { mode, domains, closeOtherBrowsers: closeOthers.checked });

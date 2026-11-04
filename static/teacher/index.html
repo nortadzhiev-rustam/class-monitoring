@@ -300,15 +300,17 @@
   <dialog id="web-dialog">
     <form method="dialog">
       <h2 id="web-title">Websites for everyone</h2>
-      <div class="field">
-        <span>Rule</span>
+      <div class="field" role="radiogroup" aria-labelledby="web-rule-label">
+        <span id="web-rule-label">Rule</span>
         <label class="radio"><input type="radio" name="web-mode" value="block" checked> Block these sites</label>
         <label class="radio"><input type="radio" name="web-mode" value="allow"> Only allow these sites</label>
       </div>
-      <label class="field">
-        <span>Sites, one per line (subdomains are included)</span>
-        <textarea id="web-list" rows="6" spellcheck="false" placeholder="youtube.com&#10;tiktok.com"></textarea>
-      </label>
+      <div class="field">
+        <label for="web-list" id="web-list-label">Sites to block, one per line</label>
+        <!-- wrap="off": a long address stays on its own line instead of looking like two sites. -->
+        <textarea id="web-list" rows="6" wrap="off" spellcheck="false" aria-describedby="web-status"></textarea>
+        <p class="small web-status" id="web-status"><span id="web-count" class="muted"></span> <span id="web-bad" class="error"></span></p>
+      </div>
       <div class="presets" id="web-presets">
         <button class="chip-btn" type="button" data-sites="youtube.com|twitch.tv|netflix.com|tiktok.com">+ Video</button>
         <button class="chip-btn" type="button" data-sites="facebook.com|instagram.com|x.com|twitter.com|snapchat.com|reddit.com">+ Social media</button>

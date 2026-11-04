@@ -92,6 +92,7 @@ button { font: inherit; color: inherit; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 .btn.primary:hover { filter: brightness(1.08); }
 .btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+.btn:disabled { opacity: 0.45; cursor: default; pointer-events: none; }
 /* "Stop showing" is shorter than "Show my screen": keep the width so the toolbar doesn't jump. */
 #broadcast { min-width: 150px; justify-content: center; }
 .btn.icon-only { width: 32px; padding: 0; justify-content: center; }
@@ -447,7 +448,7 @@ dialog h2 { margin: 0; font-size: 16px; }
 dialog menu { display: flex; justify-content: flex-end; gap: 8px; margin: 4px 0 0; padding: 0; }
 
 .field { display: flex; flex-direction: column; gap: 6px; }
-.field > span { font-weight: 600; font-size: 12px; }
+.field > span, .field > label[for] { font-weight: 600; font-size: 12px; }
 .field input:not([type="radio"], [type="checkbox"]), .field textarea {
   width: 100%;
   padding: 8px 10px;
@@ -636,6 +637,10 @@ code { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 0.9
 /* ---------- poll dialog ---------- */
 
 .presets { display: flex; flex-wrap: wrap; gap: 6px; }
+.presets[hidden] { display: none; }
+.web-status { margin: 0; min-height: 1.5em; overflow-wrap: anywhere; }
+/* Six lines normally; fewer in a short window so the buttons stay on screen. */
+#web-list { height: clamp(64px, 100vh - 420px, 150px); }
 .chip-btn {
   height: 26px;
   padding: 0 10px;
