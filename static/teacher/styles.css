@@ -92,6 +92,8 @@ button { font: inherit; color: inherit; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 .btn.primary:hover { filter: brightness(1.08); }
 .btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+/* "Stop showing" is shorter than "Show my screen": keep the width so the toolbar doesn't jump. */
+#broadcast { min-width: 150px; justify-content: center; }
 .btn.icon-only { width: 32px; padding: 0; justify-content: center; }
 .btn.small { height: 26px; padding: 0 10px; font-size: 12px; }
 
@@ -227,6 +229,8 @@ main { flex: 1; overflow: auto; position: relative; }
 .card.offline img { opacity: 0.35; filter: grayscale(1); }
 .card.offline footer { opacity: 0.6; }
 .card:not(.offline) .offline-only, .card.offline .online-only { display: none; }
+.card.offline .hover-actions { background: none; }
+.card.offline .chip { border: 1px solid var(--border); box-shadow: var(--shadow); }
 
 .select {
   position: absolute;
@@ -253,6 +257,7 @@ main { flex: 1; overflow: auto; position: relative; }
 
 .screen {
   position: relative;
+  container-type: inline-size;
   aspect-ratio: 16 / 10;
   background: var(--screen-bg);
   cursor: pointer;
@@ -321,6 +326,11 @@ main { flex: 1; overflow: auto; position: relative; }
 }
 .chip:hover { background: #fff; }
 .chip .icon { width: 14px; height: 14px; }
+/* Narrow cards: icons only (each button has a tooltip). */
+@container (max-width: 440px) {
+  .online-only .chip .label { display: none; }
+  .online-only .chip { width: 32px; padding: 0; justify-content: center; }
+}
 
 .card footer {
   display: flex;
@@ -438,7 +448,7 @@ dialog menu { display: flex; justify-content: flex-end; gap: 8px; margin: 4px 0 
 
 .field { display: flex; flex-direction: column; gap: 6px; }
 .field > span { font-weight: 600; font-size: 12px; }
-.field input, .field textarea {
+.field input:not([type="radio"], [type="checkbox"]), .field textarea {
   width: 100%;
   padding: 8px 10px;
   border: 1px solid var(--border);
@@ -448,7 +458,7 @@ dialog menu { display: flex; justify-content: flex-end; gap: 8px; margin: 4px 0 
   font: inherit;
   resize: vertical;
 }
-.field input:focus, .field textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.field input:not([type="radio"], [type="checkbox"]):focus, .field textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 #set-key { font-family: ui-monospace, "SF Mono", Consolas, monospace; }
 .key-row { display: flex; gap: 6px; }
 .key-row input { flex: 1; }
@@ -493,7 +503,7 @@ code { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 0.9
 
 /* ---------- action bar extras & card badges ---------- */
 
-.divider { width: 1px; height: 20px; margin: 0 4px; background: var(--border); }
+.divider { width: 4px; height: 1px; flex: none; }
 
 .pill.hand { background: var(--warn-soft); color: var(--warn); }
 .pill.chat, .pill.answer { background: var(--accent-soft); color: var(--accent); }
@@ -539,12 +549,13 @@ code { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 0.9
   padding: 8px 10px 0 12px;
   border-bottom: 1px solid var(--border);
 }
-.tabs { flex: 1; display: flex; gap: 2px; }
+.tabs { flex: 1; min-width: 0; display: flex; gap: 0; overflow-x: auto; scrollbar-width: none; }
 .tab {
+  flex: none;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 10px;
+  gap: 5px;
+  padding: 8px 7px;
   border: 0;
   border-bottom: 2px solid transparent;
   background: none;
@@ -553,7 +564,7 @@ code { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 0.9
   cursor: pointer;
 }
 .tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
-.panel-head .btn { margin-bottom: 6px; }
+.panel-head .btn { flex: none; margin-bottom: 6px; }
 
 .tab-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
 .tab-body[hidden] { display: none; }
@@ -638,8 +649,10 @@ code { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 0.9
 .chip-btn:hover { border-color: var(--accent); }
 .choice-inputs { margin: 6px 0 0; padding: 0 0 0 22px; display: flex; flex-direction: column; gap: 6px; }
 .choice-inputs li::marker { color: var(--muted); }
-.choice-inputs .choice-row { display: flex; gap: 6px; }
+.choice-inputs .choice-row { display: flex; align-items: center; gap: 6px; }
 .choice-inputs input { flex: 1; }
+.choice-inputs .btn { flex: none; width: 34px; height: 34px; }
+#poll-add { align-self: flex-start; padding: 4px 0; }
 
 /* ---------- groups, menus, register & files ---------- */
 

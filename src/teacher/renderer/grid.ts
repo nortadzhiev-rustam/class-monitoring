@@ -106,16 +106,23 @@ function createCard(id: string): Card {
 function renderCard(id: string): void {
   const s = store.get(id);
   let card = cards.get(id);
-  if (!s || !visible(s)) {
-    if (card) removeCard(id);
+  if (!s) {
+    removeCard(id);
     updateCounts();
     return;
   }
-  const isNew = !card;
+  if (!visible(s)) {
+    // Hidden by the group view or "Show offline": keep the card (and its
+    // thumbnail) for when it comes back into view.
+    card?.el.remove();
+    updateCounts();
+    return;
+  }
   if (!card) {
     card = createCard(id);
     cards.set(id, card);
   }
+  const isNew = !card.el.isConnected;
   const { el } = card;
   el.classList.toggle('offline', !s.online);
   el.classList.toggle('locked', s.online && s.status.locked);
@@ -128,8 +135,9 @@ function renderCard(id: string): void {
   el.querySelector('.badges')!.replaceChildren(...badges(s));
 
   const locked = s.policy.lock !== null;
-  const lockChip = el.querySelector('[data-action="lock"]')!;
-  lockChip.querySelector('span')!.textContent = locked ? 'Unlock' : 'Lock';
+  const lockChip = el.querySelector<HTMLElement>('[data-action="lock"]')!;
+  lockChip.querySelector('.label')!.textContent = locked ? 'Unlock' : 'Lock';
+  lockChip.title = locked ? 'Unlock' : 'Lock';
   lockChip.querySelector('use')!.setAttribute('href', locked ? '#i-unlock' : '#i-lock');
 
   if (isNew) place(card, id);
@@ -172,7 +180,7 @@ function renderAll(): void {
   // Re-append in sorted order; moving existing nodes keeps their thumbnails.
   for (const s of store.all()) {
     const card = cards.get(s.id);
-    if (card) grid.append(card.el);
+    if (card?.el.isConnected) grid.append(card.el);
   }
   targets.refresh();
   updateCounts();
@@ -208,7 +216,7 @@ function updateCounts(): void {
   const online = everyone.filter((s) => s.online).length;
   const offline = everyone.length - online;
   $('#count').textContent = offline ? `${online} online · ${offline} offline` : `${online} online`;
-  $('#empty').hidden = cards.size > 0;
+  $('#empty').hidden = [...cards.values()].some((c) => c.el.isConnected);
   const group = groups.current();
   $('#empty').querySelector('h1')!.textContent = group
     ? `Nobody in ${group.name} to show`
