@@ -16,6 +16,7 @@
     <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
     <symbol id="i-pointer" viewBox="0 0 24 24"><path d="M5 3l14 7.5-6.2 1.7L10 19z"/></symbol>
     <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
     <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="6.5" height="6.5" rx="1"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1"/></symbol>
   </svg>
 
@@ -27,17 +28,35 @@
       <span id="count">0 online</span>
     </button>
     <div class="spacer"></div>
+    <label class="toggle" title="Also show computers that aren't connected right now">
+      <input id="show-offline" type="checkbox" checked>
+      Show offline
+    </label>
     <label class="zoom" title="Thumbnail size">
       <svg class="icon"><use href="#i-grid"/></svg>
       <input id="zoom" type="range" min="200" max="520" step="20" value="300">
     </label>
-    <div class="actions">
-      <button class="btn" id="lock-all" type="button"><svg class="icon"><use href="#i-lock"/></svg>Lock all</button>
-      <button class="btn" id="unlock-all" type="button"><svg class="icon"><use href="#i-unlock"/></svg>Unlock all</button>
-      <button class="btn primary" id="broadcast" type="button"><svg class="icon"><use href="#i-screen"/></svg><span>Show my screen</span></button>
-      <button class="btn icon-only" id="settings" type="button" title="Class settings"><svg class="icon"><use href="#i-settings"/></svg></button>
-    </div>
+    <button class="btn icon-only" id="settings" type="button" title="Class settings"><svg class="icon"><use href="#i-settings"/></svg></button>
   </header>
+
+  <div class="viewbar">
+    <div class="views" id="views">
+      <button class="view-chip active" type="button" data-view="all">All students <span class="n" id="all-count">0</span></button>
+    </div>
+    <div class="spacer"></div>
+    <div class="target" id="target">
+      <span class="muted">Acting on</span>
+      <strong id="target-text">everyone</strong>
+      <button class="link" id="select-all" type="button">Select all</button>
+      <button class="link" id="select-none" type="button" hidden>Clear selection</button>
+    </div>
+  </div>
+
+  <div class="actionbar" id="actionbar">
+    <button class="btn" id="lock" type="button"><svg class="icon"><use href="#i-lock"/></svg>Lock</button>
+    <button class="btn" id="unlock" type="button"><svg class="icon"><use href="#i-unlock"/></svg>Unlock</button>
+    <button class="btn primary" id="broadcast" type="button"><svg class="icon"><use href="#i-screen"/></svg><span>Show my screen</span></button>
+  </div>
 
   <div class="banner" id="banner" hidden>
     <span class="live"></span>
@@ -62,12 +81,16 @@
     <article class="card">
       <div class="screen">
         <img alt="">
-        <div class="placeholder">Waiting for screen…</div>
-        <span class="pill"></span>
-        <div class="hover-actions">
+        <div class="placeholder"></div>
+        <button class="select" type="button" aria-label="Select"><svg class="icon"><use href="#i-check"/></svg></button>
+        <div class="badges"><span class="pill"></span></div>
+        <div class="hover-actions online-only">
           <button class="chip" data-action="view" type="button"><svg class="icon"><use href="#i-eye"/></svg>View</button>
           <button class="chip" data-action="control" type="button"><svg class="icon"><use href="#i-pointer"/></svg>Control</button>
           <button class="chip" data-action="lock" type="button"><svg class="icon"><use href="#i-lock"/></svg><span>Lock</span></button>
+        </div>
+        <div class="hover-actions offline-only">
+          <button class="chip" data-action="forget" type="button"><svg class="icon"><use href="#i-close"/></svg>Forget</button>
         </div>
       </div>
       <footer>
@@ -94,7 +117,7 @@
 
   <dialog id="lock-dialog">
     <form method="dialog">
-      <h2 id="lock-title">Lock all screens</h2>
+      <h2 id="lock-title">Lock screens</h2>
       <label class="field">
         <span>Message students will see</span>
         <textarea id="lock-message" rows="2" maxlength="200">Eyes on the teacher, please.</textarea>

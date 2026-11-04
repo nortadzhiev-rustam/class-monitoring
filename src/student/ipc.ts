@@ -19,6 +19,8 @@ export interface DiscoveredClass {
   room: string;
   teacher: string;
   host: string;
+  /** False when the teacher runs a different ClassMonitor version. */
+  compatible: boolean;
 }
 
 export interface SetupDetails {

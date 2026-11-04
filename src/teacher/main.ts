@@ -5,7 +5,8 @@ import path from 'node:path';
 import { configureApp, shareScreenWithoutPicker } from '../shared/electron-setup';
 import { CONTROL_PORT, type InputEvent, type Platform, type RtcSignal } from '../shared/protocol';
 import { generateClassKey } from '../shared/secure-channel';
-import type { TeacherEvent, TeacherSettings, TeacherState } from './ipc';
+import type { Target, TeacherEvent, TeacherSettings, TeacherState } from './ipc';
+import { Roster } from './roster';
 import { ClassServer, type ServerConfig } from './server';
 
 configureApp('Teacher');
@@ -14,6 +15,7 @@ if (!app.requestSingleInstanceLock()) app.exit(0);
 
 let win: BrowserWindow | null = null;
 let server: ClassServer;
+let roster: Roster;
 /** True while the teacher is remote-controlling a student. */
 let controlling = false;
 let appMenu: Menu | null = null;
@@ -44,8 +46,23 @@ function saveConfig(config: ServerConfig): void {
 
 function state(): TeacherState {
   const { port, ...settings } = server.settings;
-  return { settings, port, addresses: server.addresses(), students: server.list(), platform: process.platform as Platform };
+  return {
+    settings,
+    port,
+    addresses: server.addresses(),
+    students: server.list(),
+    roster: roster.list(),
+    platform: process.platform as Platform,
+  };
 }
+
+/** The renderer is ours, but IPC arguments still get checked before they reach students. */
+function asTarget(raw: Target): Target {
+  const ids = Array.isArray(raw?.ids) ? raw.ids.filter((id) => typeof id === 'string').slice(0, 1000) : [];
+  return { ids, everyone: raw?.everyone === true };
+}
+
+const lockText = (message: unknown) => String(message ?? '').slice(0, 200);
 
 function emit(event: TeacherEvent): void {
   win?.webContents.send('teacher:event', event);
@@ -113,10 +130,9 @@ function registerIpc(): void {
     return state();
   });
   on('teacher:copy', (text: string) => clipboard.writeText(text));
-  on('teacher:lock-all', (message: string) => server.lockAll(message));
-  on('teacher:unlock-all', () => server.unlockAll());
-  on('teacher:lock', (id: string, message: string) => server.lock(id, message));
-  on('teacher:unlock', (id: string) => server.unlock(id));
+  on('teacher:forget', (id: string) => roster.forget(id));
+  on('teacher:lock', (target: Target, message: string) => server.setPolicy(asTarget(target), { lock: lockText(message) }));
+  on('teacher:unlock', (target: Target) => server.setPolicy(asTarget(target), { lock: null }));
   on('teacher:view-start', (id: string, sessionId: string) => server.send(id, { type: 'view-start', sessionId }));
   on('teacher:view-stop', (id: string, sessionId: string) => server.send(id, { type: 'view-stop', sessionId }));
   on('teacher:control', (id: string, sessionId: string, enabled: boolean) => {
@@ -126,7 +142,10 @@ function registerIpc(): void {
   on('teacher:input', (id: string, sessionId: string, events: InputEvent[]) =>
     server.send(id, { type: 'input', sessionId, events }),
   );
-  on('teacher:broadcast-start', (sessionId: string) => server.startBroadcast(sessionId));
+  on('teacher:broadcast-start', (target: Target, sessionId: string) => {
+    server.stopBroadcast();
+    server.setPolicy(asTarget(target), { broadcast: String(sessionId) });
+  });
   on('teacher:broadcast-stop', () => server.stopBroadcast());
   on('teacher:signal', (id: string, sessionId: string, signal: RtcSignal) =>
     server.send(id, { type: 'signal', sessionId, signal }),
@@ -141,9 +160,15 @@ app.on('second-instance', () => {
 app.whenReady().then(async () => {
   appMenu = Menu.getApplicationMenu();
   shareScreenWithoutPicker();
+  roster = new Roster(path.join(app.getPath('userData'), 'roster.json'));
   server = new ClassServer(loadConfig());
-  server.on('joined', (student) => emit({ type: 'joined', student }));
-  server.on('left', (id) => emit({ type: 'left', id }));
+  server.on('joined', (student) => emit({ type: 'joined', student, entry: roster.seen(student.info, student.address) }));
+  server.on('left', (id) => {
+    roster.left(id);
+    emit({ type: 'left', id });
+  });
+  server.on('policy', (id, policy) => emit({ type: 'policy', id, policy }));
+  server.on('version-mismatch', (address) => emit({ type: 'version-mismatch', address }));
   server.on('status', (id, status) => emit({ type: 'status', id, status }));
   server.on('thumb', (id, jpeg) => emit({ type: 'thumb', id, jpeg }));
   server.on('signal', (id, sessionId, signal) => emit({ type: 'signal', id, sessionId, signal }));
@@ -169,4 +194,7 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => app.quit());
-app.on('before-quit', () => server?.stop());
+app.on('before-quit', () => {
+  server?.stop();
+  roster?.flush();
+});

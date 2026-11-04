@@ -1,12 +1,13 @@
-// End-to-end check on one machine: starts a teacher console and a student agent,
+// End-to-end check on one machine: starts a teacher console and student agents,
 // then exercises discovery, thumbnails, lock/unlock, remote view, remote control
-// (dry run: the real mouse is never moved), broadcast, auth and disconnect safety.
+// (dry run: the real mouse is never moved), broadcast, auth, first-run setup,
+// selection targeting, late joiners, offline cards and disconnect safety.
 //
 // Overlays open as small windows (CM_OVERLAY_WINDOWED) so the test never takes
 // over the screen. Screenshots go to tests/output/.
 
 import { _electron as electron } from 'playwright-core';
-import { mkdirSync, mkdtempSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -43,6 +44,21 @@ async function primaryOverlay(app) {
   }
   return null;
 }
+/** The id a student agent saved in its profile folder, to find its card. */
+const idOf = (profile) => readFileSync(path.join(tmp, profile, 'student-id'), 'utf8').trim();
+/** A freshly launched agent writes its id shortly after starting. */
+const hasId = (profile) => existsSync(path.join(tmp, profile, 'student-id'));
+const card = (profile) => `.card[data-id="${idOf(profile)}"]`;
+const onlineCards = () => page.locator('.card:not(.offline)').count();
+const launchStudent = (profile, extra = {}) =>
+  electron.launch({ args: ['dist/student/main.js'], env: { ...base, CM_USER_DATA: path.join(tmp, profile), ...extra } });
+
+async function lockTarget(message) {
+  await page.click('#lock');
+  if (message) await page.fill('#lock-message', message);
+  await page.click('#lock-confirm');
+}
+
 async function waitFor(predicate, timeout = 10_000) {
   const end = Date.now() + timeout;
   while (Date.now() < end) {
@@ -52,12 +68,13 @@ async function waitFor(predicate, timeout = 10_000) {
   throw new Error('timed out');
 }
 
-const teacher = await electron.launch({ args: ['dist/teacher/main.js'], env: { ...base, CM_USER_DATA: path.join(tmp, 'teacher') } });
-const page = await teacher.firstWindow();
+const launchTeacher = () => electron.launch({ args: ['dist/teacher/main.js'], env: { ...base, CM_USER_DATA: path.join(tmp, 'teacher') } });
+let teacher = await launchTeacher();
+let page = await teacher.firstWindow();
 page.on('console', (m) => m.type() === 'error' && console.log('    [teacher console]', m.text()));
 await page.setViewportSize({ width: 1280, height: 800 }).catch(() => {});
 
-const student = await electron.launch({ args: ['dist/student/main.js'], env: { ...base, CM_USER_DATA: path.join(tmp, 'student') } });
+const student = await launchStudent('student');
 const helperLog = [];
 student.process().stdout.on('data', (d) => helperLog.push(String(d)));
 
@@ -82,10 +99,8 @@ await step(
   { soft: true },
 );
 
-await step('lock all shows the message on the student', async () => {
-  await page.click('#lock-all');
-  await page.fill('#lock-message', 'Pens down, eyes up');
-  await page.click('#lock-confirm');
+await step('locking everyone shows the message on the student', async () => {
+  await lockTarget('Pens down, eyes up');
   await page.waitForSelector('.card.locked', { timeout: 10_000 });
   let overlay = null;
   await waitFor(async () => (overlay = await primaryOverlay(student)) !== null);
@@ -94,8 +109,8 @@ await step('lock all shows the message on the student', async () => {
   return `${overlayPages(student).length} overlay window(s)`;
 });
 
-await step('unlock all removes the lock screen', async () => {
-  await page.click('#unlock-all');
+await step('unlocking everyone removes the lock screen', async () => {
+  await page.click('#unlock');
   await page.waitForSelector('.card:not(.locked)', { timeout: 10_000 });
   await waitFor(async () => overlayPages(student).length === 0);
 });
@@ -157,23 +172,21 @@ await step('broadcast shows the teacher screen on the student', async () => {
 });
 
 await step('a student with the wrong class key is refused', async () => {
-  const intruder = await electron.launch({
-    args: ['dist/student/main.js'],
-    env: { ...base, CM_CLASS_KEY: 'wrong-key', CM_TEACHER_HOST: '127.0.0.1', CM_USER_DATA: path.join(tmp, 'intruder') },
-  });
+  const intruder = await launchStudent('intruder', { CM_CLASS_KEY: 'wrong-key', CM_TEACHER_HOST: '127.0.0.1' });
   await page.waitForTimeout(5000);
-  const count = await page.locator('.card').count();
+  const count = await onlineCards();
   await intruder.close();
   if (count !== 1) throw new Error(`expected 1 student, saw ${count}`);
 });
 
+let newcomer = null;
 await step('a new student joins through the setup window', async () => {
   const env = { ...base, CM_USER_DATA: path.join(tmp, 'newcomer') };
   delete env.CM_CLASS_KEY;
   delete env.CM_ROOM;
   const setupPage = (app) => app.windows().find((p) => p.url().endsWith('setup.html'));
 
-  let newcomer = await electron.launch({ args: ['dist/student/main.js'], env });
+  newcomer = await electron.launch({ args: ['dist/student/main.js'], env });
   await waitFor(async () => setupPage(newcomer));
   const setup = setupPage(newcomer);
   await setup.waitForSelector('.option:has-text("E2E Room")', { timeout: 10_000 });
@@ -187,25 +200,73 @@ await step('a new student joins through the setup window', async () => {
   await setup.screenshot({ path: path.join(out, '5-setup-window.png') });
   await setup.click('#join');
   await setup.waitForSelector('#status.ok', { timeout: 15_000 });
-  await page.waitForFunction(() => document.querySelectorAll('.card').length === 2, null, { timeout: 10_000 });
+  await waitFor(async () => (await onlineCards()) === 2);
   await waitFor(async () => !setupPage(newcomer));
   await newcomer.close();
-  await page.waitForFunction(() => document.querySelectorAll('.card').length === 1, null, { timeout: 10_000 });
+  await waitFor(async () => (await onlineCards()) === 1);
 
   // Restarted, it rejoins from the saved settings without asking again.
   newcomer = await electron.launch({ args: ['dist/student/main.js'], env });
-  await page.waitForFunction(() => document.querySelectorAll('.card').length === 2, null, { timeout: 15_000 });
-  const asked = Boolean(setupPage(newcomer));
+  await waitFor(async () => (await onlineCards()) === 2, 15_000);
+  if (setupPage(newcomer)) throw new Error('setup window reopened after a successful join');
+});
+
+await step('locking selected students leaves the others alone', async () => {
+  await page.hover(`${card('newcomer')} .screen`);
+  await page.click(`${card('newcomer')} .select`);
+  const target = await page.textContent('#target-text');
+  if (target !== '1 selected student') throw new Error(`target says "${target}"`);
+  await lockTarget('Just you');
+  await page.waitForSelector(`${card('newcomer')}.locked`, { timeout: 10_000 });
+  await waitFor(async () => overlayPages(newcomer).length > 0);
+  if (overlayPages(student).length) throw new Error('the unselected student was locked too');
+  await page.click('#select-none');
+  await page.click('#unlock');
+  await waitFor(async () => overlayPages(newcomer).length === 0);
+  return target;
+});
+
+await step('a student who joins late gets the class lock', async () => {
+  await lockTarget('Late again');
+  const late = await launchStudent('late');
+  await waitFor(async () => hasId('late'));
+  await page.waitForSelector(`${card('late')}.locked`, { timeout: 20_000 });
+  let overlay = null;
+  await waitFor(async () => (overlay = await primaryOverlay(late)) !== null);
+  await overlay.waitForFunction(() => document.getElementById('message')?.textContent === 'Late again');
+  await page.click('#unlock');
+  await waitFor(async () => overlayPages(late).length === 0 && overlayPages(student).length === 0);
+  await late.close();
+});
+
+await step('disconnected students stay as offline cards until forgotten', async () => {
   await newcomer.close();
-  if (asked) throw new Error('setup window reopened after a successful join');
+  await page.waitForSelector(`${card('newcomer')}.offline`, { timeout: 10_000 });
+  const placeholder = await page.textContent(`${card('newcomer')} .placeholder`);
+  await page.screenshot({ path: path.join(out, '6-offline-cards.png') });
+  await page.click('#show-offline');
+  await page.waitForSelector(card('newcomer'), { state: 'detached' });
+  await page.click('#show-offline');
+  await page.hover(`${card('late')} .screen`);
+  await page.click(`${card('late')} [data-action="forget"]`);
+  await page.waitForSelector(card('late'), { state: 'detached' });
+  return placeholder;
 });
 
 await step('a student locked when the teacher disappears is unlocked', async () => {
-  await page.click('#lock-all');
-  await page.click('#lock-confirm');
+  await lockTarget();
   await waitFor(async () => overlayPages(student).length > 0);
   await teacher.close();
   await waitFor(async () => overlayPages(student).length === 0, 15_000);
+});
+
+await step('the roster survives a teacher restart', async () => {
+  teacher = await launchTeacher();
+  page = await teacher.firstWindow();
+  await page.waitForSelector(`${card('newcomer')}.offline`, { timeout: 10_000 });
+  await page.waitForSelector(`${card('student')}:not(.offline)`, { timeout: 20_000 });
+  if (await page.locator(card('late')).count()) throw new Error('a forgotten student came back');
+  await teacher.close();
 });
 
 await student.close();

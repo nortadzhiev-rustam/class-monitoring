@@ -26,7 +26,8 @@ let selected: string | null = null;
 
 function renderClasses(): void {
   if (selected && !manual.open && !classes.some((c) => c.room === selected) && classes.length) selected = null;
-  if (!selected && !manual.open && classes.length === 1) selected = classes[0].room;
+  const usable = classes.filter((c) => c.compatible);
+  if (!selected && !manual.open && usable.length === 1) selected = usable[0].room;
 
   list.replaceChildren(
     ...classes.map((c) => {
@@ -34,12 +35,15 @@ function renderClasses(): void {
       option.className = 'option';
       const radio = Object.assign(document.createElement('input'), { type: 'radio', name: 'class', value: c.room });
       radio.checked = c.room === selected && !manual.open;
+      radio.disabled = !c.compatible;
       radio.addEventListener('change', () => {
         selected = c.room;
         manual.open = false;
       });
       const room = Object.assign(document.createElement('span'), { className: 'room', textContent: c.room });
-      const teacher = Object.assign(document.createElement('span'), { className: 'teacher', textContent: `${c.teacher} · ${c.host}` });
+      const meta = c.compatible ? `${c.teacher} · ${c.host}` : `${c.teacher} · different ClassMonitor version, update needed`;
+      const teacher = Object.assign(document.createElement('span'), { className: 'teacher', textContent: meta });
+      option.classList.toggle('incompatible', !c.compatible);
       option.append(radio, room, teacher);
       return option;
     }),

@@ -2,7 +2,8 @@
 // Everything after the handshake travels inside a SecureChannel (see secure-channel.ts).
 
 export const APP_ID = 'class-monitor';
-export const PROTOCOL_VERSION = 1;
+/** Teacher and students must match; bump on any incompatible message change. */
+export const PROTOCOL_VERSION = 2;
 /** UDP port students listen on for teacher beacons. */
 export const DISCOVERY_PORT = 47800;
 /** TCP port the teacher console accepts WebSocket connections on. */
@@ -27,8 +28,24 @@ export interface StudentInfo {
   platform: Platform;
   /** Size of the shared (primary) display in device-independent pixels. */
   screen: { width: number; height: number };
+  /** Network adapter MAC addresses, for Wake-on-LAN. */
+  macs: string[];
   version: string;
 }
+
+/**
+ * Everything the teacher has switched on for one student. Sent whole whenever it
+ * changes (and on connect), so a student that reconnects or joins late ends up
+ * in the same state as the rest of its class.
+ */
+export interface Policy {
+  /** Lock-screen message, or null when unlocked. */
+  lock: string | null;
+  /** Teacher's screen-broadcast session the student should show, or null. */
+  broadcast: string | null;
+}
+
+export const OPEN_POLICY: Policy = { lock: null, broadcast: null };
 
 export type RtcSignal =
   | { kind: 'offer' | 'answer'; sdp: string }
@@ -46,15 +63,12 @@ export type InputEvent =
 
 export type TeacherMessage =
   | { type: 'welcome'; teacher: string; room: string }
-  | { type: 'lock'; message: string }
-  | { type: 'unlock' }
+  | { type: 'policy'; policy: Policy }
   | { type: 'thumb-config'; intervalMs: number; width: number }
   | { type: 'view-start'; sessionId: string }
   | { type: 'view-stop'; sessionId: string }
   | { type: 'control'; sessionId: string; enabled: boolean; teacherPlatform: Platform }
   | { type: 'input'; sessionId: string; events: InputEvent[] }
-  | { type: 'broadcast-start'; sessionId: string }
-  | { type: 'broadcast-stop'; sessionId: string }
   | { type: 'signal'; sessionId: string; signal: RtcSignal };
 
 export type StudentMessage =

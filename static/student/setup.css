@@ -93,6 +93,7 @@ legend, .field > span { padding: 0; margin-bottom: 6px; font-size: 12px; font-we
 }
 .option:has(input:checked) { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 .option input { grid-row: span 2; margin: 0; accent-color: var(--accent); }
+.option.incompatible { opacity: 0.6; cursor: not-allowed; }
 .option .room { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .option .teacher { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 

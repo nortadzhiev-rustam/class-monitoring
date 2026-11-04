@@ -1,6 +1,6 @@
 // The teacher's side of the LAN: announces the class over UDP, accepts
-// authenticated student connections and keeps the class-wide state (lock,
-// broadcast) so students who join late are brought in line.
+// authenticated student connections and keeps every student's policy (lock,
+// broadcast, ...) so students who reconnect or join late are brought in line.
 
 import dgram from 'node:dgram';
 import { EventEmitter } from 'node:events';
@@ -12,13 +12,16 @@ import {
   DISCOVERY_PORT,
   PROTOCOL_VERSION,
   type Beacon,
+  type Platform,
+  type Policy,
   type RtcSignal,
   type StudentInfo,
   type StudentMessage,
   type TeacherMessage,
 } from '../shared/protocol';
 import { acceptStudent, CLOSE_REPLACED, deriveClassKey, type SecureChannel } from '../shared/secure-channel';
-import type { StudentStatus, StudentSummary, TeacherSettings } from './ipc';
+import type { StudentStatus, StudentSummary, Target, TeacherSettings } from './ipc';
+import { PolicyTable } from './policy';
 
 export interface ServerConfig extends TeacherSettings {
   port: number;
@@ -40,6 +43,9 @@ export interface ServerEvents {
   signal: [string, string, RtcSignal];
   'broadcast-ready': [string, string];
   'student-error': [string, string | undefined, string];
+  policy: [string, Policy];
+  /** A computer at this address tried to join with a different protocol version. */
+  'version-mismatch': [string];
 }
 
 const HEARTBEAT_MS = 10_000;
@@ -52,11 +58,7 @@ export class ClassServer extends EventEmitter<ServerEvents> {
   private heartbeatTimer: NodeJS.Timeout | null = null;
   private classKey: Buffer;
   private readonly students = new Map<string, Student>();
-
-  /** Class-wide state applied to every student, including late joiners. */
-  private lockMessage: string | null = null;
-  private lockedIds = new Set<string>();
-  private broadcastSessionId: string | null = null;
+  private readonly policies = new PolicyTable();
 
   constructor(private config: ServerConfig) {
     super();
@@ -65,10 +67,6 @@ export class ClassServer extends EventEmitter<ServerEvents> {
 
   get settings(): ServerConfig {
     return { ...this.config };
-  }
-
-  get broadcasting(): string | null {
-    return this.broadcastSessionId;
   }
 
   async start(): Promise<void> {
@@ -89,13 +87,14 @@ export class ClassServer extends EventEmitter<ServerEvents> {
   /** Applies a new room or class key; everyone reconnects with the new settings. */
   async reconfigure(config: ServerConfig): Promise<void> {
     this.stop();
+    this.policies.reset();
     this.config = config;
     this.classKey = deriveClassKey(config.classKey);
     await this.start();
   }
 
   list(): StudentSummary[] {
-    return [...this.students.values()].map(summary);
+    return [...this.students.values()].map((s) => this.summary(s));
   }
 
   /** IPv4 addresses students can use if broadcast discovery is blocked. */
@@ -107,35 +106,28 @@ export class ClassServer extends EventEmitter<ServerEvents> {
     this.students.get(id)?.channel.send(msg);
   }
 
-  lockAll(message: string): void {
-    this.lockMessage = message;
-    for (const id of this.students.keys()) this.lock(id, message);
+  /** Changes settings for the target and pushes the new policy to those online. */
+  setPolicy(target: Target, patch: Partial<Policy>): void {
+    // "Everyone" includes students who connected after the console built the target.
+    const ids = target.everyone ? [...new Set([...target.ids, ...this.students.keys()])] : target.ids;
+    this.pushPolicy(this.policies.apply({ ids, everyone: target.everyone }, patch));
   }
 
-  unlockAll(): void {
-    this.lockMessage = null;
-    for (const id of this.students.keys()) this.unlock(id);
-  }
-
-  lock(id: string, message: string): void {
-    this.lockedIds.add(id);
-    this.send(id, { type: 'lock', message });
-  }
-
-  unlock(id: string): void {
-    this.lockedIds.delete(id);
-    this.send(id, { type: 'unlock' });
-  }
-
-  startBroadcast(sessionId: string): void {
-    this.broadcastSessionId = sessionId;
-    for (const id of this.students.keys()) this.send(id, { type: 'broadcast-start', sessionId });
-  }
-
+  /** Ends the screen broadcast for everyone it was going to. */
   stopBroadcast(): void {
-    const sessionId = this.broadcastSessionId;
-    this.broadcastSessionId = null;
-    if (sessionId) for (const id of this.students.keys()) this.send(id, { type: 'broadcast-stop', sessionId });
+    this.pushPolicy(this.policies.clear('broadcast', this.students.keys()));
+  }
+
+  private summary(s: Student): StudentSummary {
+    return { info: s.info, address: s.address, status: s.status, policy: this.policies.get(s.info.id) };
+  }
+
+  private pushPolicy(ids: string[]): void {
+    for (const id of ids) {
+      const policy = this.policies.get(id);
+      this.send(id, { type: 'policy', policy });
+      this.emit('policy', id, policy);
+    }
   }
 
   private listen(): Promise<void> {
@@ -153,7 +145,9 @@ export class ClassServer extends EventEmitter<ServerEvents> {
     try {
       channel = await acceptStudent(ws, this.classKey, this.config.room);
     } catch (err) {
-      console.warn(`[server] rejected ${address}: ${(err as Error).message}`);
+      const message = (err as Error).message;
+      console.warn(`[server] rejected ${address}: ${message}`);
+      if (/protocol v/.test(message)) this.emit('version-mismatch', address.replace(/^::ffff:/, ''));
       return;
     }
 
@@ -163,7 +157,12 @@ export class ClassServer extends EventEmitter<ServerEvents> {
         channel.close(1008, 'expected info');
         return;
       }
-      this.admit(msg.info, address.replace(/^::ffff:/, ''), channel);
+      const info = sanitizeInfo(msg.info);
+      if (!info) {
+        channel.close(1008, 'invalid info');
+        return;
+      }
+      this.admit(info, address.replace(/^::ffff:/, ''), channel);
     });
   }
 
@@ -194,11 +193,9 @@ export class ClassServer extends EventEmitter<ServerEvents> {
 
     channel.send({ type: 'welcome', teacher: this.config.teacherName, room: this.config.room });
     channel.send({ type: 'thumb-config', ...THUMB_CONFIG });
-    if (this.lockMessage !== null) this.lockedIds.add(info.id);
-    if (this.lockedIds.has(info.id)) channel.send({ type: 'lock', message: this.lockMessage ?? '' });
-    if (this.broadcastSessionId) channel.send({ type: 'broadcast-start', sessionId: this.broadcastSessionId });
+    channel.send({ type: 'policy', policy: this.policies.get(info.id) });
 
-    this.emit('joined', summary(student));
+    this.emit('joined', this.summary(student));
   }
 
   private onMessage(student: Student, msg: StudentMessage, payload: Buffer | undefined): void {
@@ -215,15 +212,17 @@ export class ClassServer extends EventEmitter<ServerEvents> {
         this.emit('signal', id, msg.sessionId, msg.signal);
         break;
       case 'broadcast-ready':
-        if (msg.sessionId === this.broadcastSessionId) this.emit('broadcast-ready', id, msg.sessionId);
+        if (msg.sessionId === this.policies.get(id).broadcast) this.emit('broadcast-ready', id, msg.sessionId);
         break;
       case 'error':
         console.warn(`[server] ${student.info.hostname}: ${msg.message}`);
         this.emit('student-error', id, msg.sessionId, msg.message);
         break;
-      case 'info':
-        student.info = msg.info;
+      case 'info': {
+        const info = sanitizeInfo(msg.info);
+        if (info && info.id === id) student.info = info;
         break;
+      }
     }
   }
 
@@ -265,8 +264,22 @@ export class ClassServer extends EventEmitter<ServerEvents> {
   }
 }
 
-function summary(s: Student): StudentSummary {
-  return { info: s.info, address: s.address, status: s.status };
+const PLATFORMS: Platform[] = ['darwin', 'win32', 'linux'];
+const text = (v: unknown, max: number) => (typeof v === 'string' ? v.slice(0, max) : '');
+
+/** Student-supplied identity is untrusted: keep only well-formed, bounded fields. */
+function sanitizeInfo(raw: StudentInfo): StudentInfo | null {
+  if (!raw || typeof raw.id !== 'string' || !/^[\w-]{8,64}$/.test(raw.id)) return null;
+  const dim = (n: unknown) => (Number.isFinite(n) ? Math.max(0, Math.min(100_000, Number(n))) : 0);
+  return {
+    id: raw.id,
+    hostname: text(raw.hostname, 80) || 'Unknown computer',
+    username: text(raw.username, 80),
+    platform: PLATFORMS.includes(raw.platform) ? raw.platform : 'linux',
+    screen: { width: dim(raw.screen?.width), height: dim(raw.screen?.height) },
+    macs: (Array.isArray(raw.macs) ? raw.macs : []).filter((m) => typeof m === 'string' && /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/i.test(m)).slice(0, 8),
+    version: text(raw.version, 20),
+  };
 }
 
 function lanInterfaces(): Array<{ address: string; broadcast: string }> {

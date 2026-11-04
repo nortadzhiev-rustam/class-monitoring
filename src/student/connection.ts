@@ -20,9 +20,11 @@ interface LinkEvents {
   connected: [{ teacher: string; room: string; host: string }];
   disconnected: [];
   message: [TeacherMessage, Buffer | undefined];
-  /** A connection attempt failed; `rejected` means the class key didn't match. */
-  failed: [message: string, rejected: boolean];
+  /** A connection attempt failed: wrong class key, different ClassMonitor version, or anything else. */
+  failed: [message: string, reason: FailReason];
 }
+
+export type FailReason = 'key' | 'version' | 'other';
 
 const DIRECT_RETRY_MS = 3000;
 /** After a failed handshake, ignore that teacher for a while instead of hammering it. */
@@ -30,7 +32,7 @@ const BACKOFF_MS = 30_000;
 /** The teacher pings every 10 s; silence this long means the link is dead. */
 const SILENCE_LIMIT_MS = 30_000;
 
-/** Calls `onBeacon` for every ClassMonitor teacher beacon heard on the network. */
+/** Calls `onBeacon` for every ClassMonitor teacher beacon heard on the network, of any version. */
 export function watchBeacons(onBeacon: (beacon: Beacon, host: string) => void): dgram.Socket {
   const socket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
   socket.on('error', (err) => console.warn('[discovery]', err.message));
@@ -41,7 +43,7 @@ export function watchBeacons(onBeacon: (beacon: Beacon, host: string) => void): 
     } catch {
       return;
     }
-    if (beacon.app === APP_ID && beacon.v === PROTOCOL_VERSION && typeof beacon.room === 'string') onBeacon(beacon, rinfo.address);
+    if (beacon?.app === APP_ID && typeof beacon.v === 'number' && typeof beacon.room === 'string') onBeacon(beacon, rinfo.address);
   });
   socket.bind(DISCOVERY_PORT);
   return socket;
@@ -56,6 +58,7 @@ export class TeacherLink extends EventEmitter<LinkEvents> {
   private socket: dgram.Socket | null = null;
   private timers: NodeJS.Timeout[] = [];
   private lastHeard = 0;
+  private readonly versionWarned = new Set<string>();
 
   constructor(
     private readonly config: StudentConfig,
@@ -75,7 +78,13 @@ export class TeacherLink extends EventEmitter<LinkEvents> {
 
   start(): void {
     this.socket = watchBeacons((beacon, host) => {
-      if (beacon.room === this.config.room) void this.connect(host, Number(beacon.port));
+      if (beacon.room !== this.config.room) return;
+      if (beacon.v === PROTOCOL_VERSION) {
+        void this.connect(host, Number(beacon.port));
+      } else if (!this.versionWarned.has(host)) {
+        this.versionWarned.add(host);
+        this.emit('failed', `teacher at ${host} speaks protocol v${beacon.v}`, 'version');
+      }
     });
     const { teacherHost, teacherPort } = this.config;
     if (teacherHost) {
@@ -130,11 +139,11 @@ export class TeacherLink extends EventEmitter<LinkEvents> {
       channel.send({ type: 'info', info: this.info() });
     } catch (err) {
       const message = (err as Error).message;
-      const rejected = /class key|authentication/.test(message);
-      if (rejected || /protocol/.test(message)) this.backoff.set(key, Date.now() + BACKOFF_MS);
+      const reason: FailReason = /class key|authentication/.test(message) ? 'key' : /protocol/.test(message) ? 'version' : 'other';
+      if (reason !== 'other') this.backoff.set(key, Date.now() + BACKOFF_MS);
       if (!/ECONNREFUSED|closed during handshake \(1006/.test(message)) {
         console.warn(`[link] ${key}: ${message}`);
-        if (!this.stopped) this.emit('failed', message, rejected);
+        if (!this.stopped) this.emit('failed', message, reason);
       }
     } finally {
       this.connecting = false;

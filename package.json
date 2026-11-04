@@ -9,6 +9,7 @@
     "build": "node scripts/build.mjs",
     "build:native": "bash scripts/build-native.sh",
     "typecheck": "tsc --noEmit",
+    "test": "node scripts/build.mjs --tests && node --test \"dist-tests/*.test.cjs\"",
     "teacher": "npm run build && electron dist/teacher/main.js",
     "student": "npm run build && electron dist/student/main.js",
     "test:e2e": "npm run build && node tests/e2e.mjs",
