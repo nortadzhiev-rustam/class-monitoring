@@ -3,7 +3,7 @@
 // shut down, wake).
 
 import type { PowerAction } from '../../shared/protocol';
-import { MAX_DOMAINS, normaliseDomain } from '../../shared/web-rules';
+import { MAX_DOMAINS, normaliseDomain, type WebRules } from '../../shared/web-rules';
 import { askConfirm, askText } from './dialogs';
 import { $, api, errorText, plural, prefs, toast } from './dom';
 import { showMenu } from './menu';
@@ -135,6 +135,35 @@ function updateWebForm(): void {
   webApply.disabled = mode === 'block' && !domains.length;
 }
 
+/** Websites ▾: block everything in one click, pick sites, or lift the rules. */
+export function webMenu(anchor: HTMLElement, to: Resolved): void {
+  showMenu(anchor, [
+    { label: 'Block all websites', action: () => blockAllSites(to) },
+    { label: 'Choose sites…', action: () => webRules(to) },
+    'separator',
+    { label: 'Allow all websites', action: () => setWeb(to, null) },
+  ]);
+}
+
+/**
+ * An allow-list with nothing on it: no page opens in Chrome or Edge. Other
+ * browsers follow the dialog's last choice, and the saved site list is kept.
+ */
+function blockAllSites(to: Resolved): void {
+  setWeb(to, { mode: 'allow', domains: [], closeOtherBrowsers: prefs.get('webCloseOthers') !== 'false' });
+}
+
+function setWeb(to: Resolved, rules: WebRules | null): void {
+  api.setWeb(to.target, rules);
+  const who = forWhom(to);
+  let done: string;
+  if (!rules) done = `All websites allowed again for ${who}.`;
+  else if (rules.mode === 'block') done = `Blocking ${plural(rules.domains.length, 'site')} for ${who}.`;
+  else if (rules.domains.length) done = `Only ${plural(rules.domains.length, 'site')} allowed for ${who}.`;
+  else done = `All websites blocked for ${who}.`;
+  toast(done, 'info');
+}
+
 export function webRules(to: Resolved): void {
   webTarget = to;
   $('#web-title').textContent = `Websites for ${forWhom(to)}`;
@@ -164,8 +193,7 @@ webDialog.addEventListener('close', () => {
   webTarget = null;
   if (!to) return;
   if (webDialog.returnValue === 'off') {
-    api.setWeb(to.target, null);
-    toast(`All websites allowed again for ${forWhom(to)}.`, 'info');
+    setWeb(to, null);
     return;
   }
   if (webDialog.returnValue !== 'on') return;
@@ -178,11 +206,7 @@ webDialog.addEventListener('close', () => {
   prefs.set('webSites', lines(webList.value).join('\n'));
   prefs.set('webMode', mode);
   prefs.set('webCloseOthers', String(closeOthers.checked));
-  api.setWeb(to.target, { mode, domains, closeOtherBrowsers: closeOthers.checked });
-  toast(
-    mode === 'block' ? `Blocking ${plural(domains.length, 'site')} for ${forWhom(to)}.` : `Only ${plural(domains.length, 'site')} allowed for ${forWhom(to)}.`,
-    'info',
-  );
+  setWeb(to, { mode, domains, closeOtherBrowsers: closeOthers.checked });
 });
 
 // ---------------------------------------------------------------- power

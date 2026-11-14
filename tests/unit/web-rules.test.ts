@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { cleanRules, normaliseDomain, toDnrRules } from '../../src/shared/web-rules';
+import { blocksEverySite, cleanRules, normaliseDomain, toDnrRules } from '../../src/shared/web-rules';
 
 test('whatever the teacher pastes becomes a bare domain', () => {
   assert.equal(normaliseDomain('https://www.YouTube.com/watch?v=1'), 'youtube.com');
@@ -47,6 +47,25 @@ test('allow mode blocks every page except the allowed sites', () => {
     ['allow', 2, ['bbc.co.uk']],
   ]);
   assert.deepEqual(new Set(rules.map((r) => r.id)).size, 3);
+});
+
+test('an empty allow-list blocks every page and says so on the blocked page', () => {
+  const rules = { mode: 'allow' as const, domains: [], closeOtherBrowsers: true };
+  assert.equal(blocksEverySite(rules), true);
+  assert.equal(blocksEverySite({ ...rules, domains: ['wikipedia.org'] }), false);
+  assert.equal(blocksEverySite({ ...rules, mode: 'block', domains: ['youtube.com'] }), false);
+  assert.equal(blocksEverySite(null), false);
+  assert.deepEqual(toDnrRules(rules), [
+    {
+      id: 1,
+      priority: 1,
+      action: { type: 'redirect', redirect: { extensionPath: '/blocked.html?mode=all' } },
+      condition: { resourceTypes: ['main_frame'] },
+    },
+  ]);
+  // A real allow-list keeps the "only a few sites" wording.
+  const limited = toDnrRules({ ...rules, domains: ['wikipedia.org'] })[0].action;
+  assert.deepEqual(limited, { type: 'redirect', redirect: { extensionPath: '/blocked.html?mode=allow' } });
 });
 
 test('no rules means no filtering', () => {

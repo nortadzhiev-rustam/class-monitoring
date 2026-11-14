@@ -445,8 +445,10 @@ await step('the web filter bridge carries rules down and the site up (simulated 
     await page.waitForSelector(`${card('student')} .pill:has-text("example.org")`, { timeout: 10_000 });
 
     await page.click('#web');
+    await page.click('.menu button:has-text("Choose sites")');
     await page.fill('#web-list', 'https://www.youtube.com/watch?v=1');
     // Leave the tester's own Safari/Firefox alone: this agent runs on their Mac.
+    // The console remembers this, so "Block all websites" below leaves them alone too.
     await page.uncheck('#web-close-others');
     await page.click('#web-on');
     await waitFor(async () => rulesFor('youtube.com'));
@@ -454,7 +456,18 @@ await step('the web filter bridge carries rules down and the site up (simulated 
     await page.screenshot({ path: path.join(out, '18-web-rules.png') });
 
     await page.click('#web');
-    await page.click('#web-off');
+    await page.click('.menu button:has-text("Block all websites")');
+    await waitFor(async () => {
+      const last = fromAgent.at(-1);
+      return last?.type === 'rules' && last.rules?.mode === 'allow' && last.rules.domains.length === 0;
+    });
+    if (fromAgent.at(-1).rules.closeOtherBrowsers) throw new Error('"Block all websites" ignored the remembered "close other browsers" choice');
+    await page.waitForSelector(`${card('student')} .pill:has-text("Websites blocked")`);
+    await page.waitForSelector('.toast.info:has-text("All websites blocked for everyone")');
+    await page.screenshot({ path: path.join(out, '18b-websites-blocked.png') });
+
+    await page.click('#web');
+    await page.click('.menu button:has-text("Allow all websites")');
     await waitFor(async () => fromAgent.at(-1)?.type === 'rules' && fromAgent.at(-1).rules === null);
   } finally {
     host.kill();

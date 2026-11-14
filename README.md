@@ -38,7 +38,7 @@ A LAN classroom-management app in the spirit of NetSupport School: a **teacher c
 | --- | --- |
 | Open website / app | Opens a link in the default browser or an app by name |
 | Block apps | Named apps (with `*` wildcards) are closed whenever they start |
-| Websites | Block-list or allow-list sites in Chrome and Edge via the ClassMonitor Web Filter extension |
+| Websites | Block all websites in one go, or block-list / allow-list sites, in Chrome and Edge via the ClassMonitor Web Filter extension |
 | Power | Log off, restart or shut down after a 15-second warning; Wake-on-LAN for offline computers |
 
 **Who does an action apply to?** Select cards (corner checkbox, Cmd/Ctrl-click, Shift-click) and actions go to the selection; with nothing selected they go to the group you're viewing, or everyone. The bar above the toolbar always says which. Lock, show my screen, polls, the register, collecting work, blocked apps and website rules also reach students who join late or reconnect.
@@ -115,7 +115,9 @@ Website rules are applied by the **ClassMonitor Web Filter** extension, which ta
    - Chrome: `ExtensionInstallForcelist` = `<chrome id>;https://clients2.google.com/service/update2/crx` (Windows: `HKLM\Software\Policies\Google\Chrome\ExtensionInstallForcelist`; macOS: a `com.google.Chrome` configuration profile).
    - Edge: `ExtensionInstallForcelist` = `<edge id>;https://edge.microsoft.com/extensionwebstorebase/v1/crx` (Windows: `HKLM\Software\Policies\Microsoft\Edge\ExtensionInstallForcelist`; macOS: a `com.microsoft.Edge` profile).
 
-While rules are on, Firefox, Safari and other browsers the extension can't reach are closed (you can switch this off in the Websites dialog). Cards say **Web filter missing** where Chrome or Edge is open without the extension.
+**Websites ▾ → Block all websites** stops every page from opening in Chrome and Edge (an allow-list with nothing on it); **Allow all websites** lifts it. It covers browsers only: other apps that use the internet keep working, so pair it with **Block apps** if needed.
+
+While rules are on, Firefox, Safari and other browsers the extension can't reach are closed (you can switch this off under **Choose sites…**, and Block all websites follows that choice). Cards say **Web filter missing** where Chrome or Edge is open without the extension.
 
 To try it before publishing: load `dist/extension` unpacked (chrome://extensions → Developer mode → Load unpacked) and start the student app once with `CM_REGISTER_HOST=1`, which registers the development build with Chrome and Edge for your user.
 
