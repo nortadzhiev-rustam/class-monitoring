@@ -72,7 +72,7 @@
   <div class="actionbar" id="actionbar">
     <button class="btn" id="lock" type="button"><svg class="icon"><use href="#i-lock"/></svg>Lock</button>
     <button class="btn" id="unlock" type="button"><svg class="icon"><use href="#i-unlock"/></svg>Unlock</button>
-    <button class="btn primary" id="broadcast" type="button"><svg class="icon"><use href="#i-screen"/></svg><span>Show my screen</span></button>
+    <button class="btn primary" id="broadcast" type="button"><svg class="icon"><use href="#i-screen"/></svg><span>Show my screen</span><svg class="icon caret"><use href="#i-down"/></svg></button>
     <span class="divider"></span>
     <button class="btn" id="message" type="button"><svg class="icon"><use href="#i-message"/></svg>Message</button>
     <button class="btn" id="poll" type="button"><svg class="icon"><use href="#i-poll"/></svg>Poll</button>
@@ -89,6 +89,7 @@
   <div class="banner" id="banner" hidden>
     <span class="live"></span>
     <span id="banner-text">Showing your screen to all students</span>
+    <div class="screens" id="banner-screens" role="tablist" aria-label="Screen to show" hidden></div>
     <button class="btn small" id="banner-stop" type="button">Stop</button>
   </div>
 

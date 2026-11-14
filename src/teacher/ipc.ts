@@ -1,5 +1,6 @@
 // Types shared by the teacher's main process, preload and renderer.
 
+import type { DisplayInfo } from '../shared/displays';
 import type { Collect, InputEvent, Platform, Policy, Poll, PowerAction, RtcSignal, StudentInfo, WebStatus } from '../shared/protocol';
 import type { WebRules } from '../shared/web-rules';
 
@@ -65,6 +66,12 @@ export interface Target {
   everyone: boolean;
 }
 
+/** One of the teacher's own monitors, for choosing what "Show my screen" shares. */
+export interface TeacherScreen extends DisplayInfo {
+  /** The monitor's name, e.g. "Built-in Retina Display" ('' if the system has none). */
+  label: string;
+}
+
 export interface TeacherSettings {
   room: string;
   teacherName: string;
@@ -79,6 +86,8 @@ export interface TeacherState {
   roster: RosterEntry[];
   groups: Group[];
   platform: Platform;
+  /** The teacher's monitors, main one first (see orderDisplays). */
+  screens: TeacherScreen[];
 }
 
 export type TeacherEvent =
@@ -102,7 +111,9 @@ export type TeacherEvent =
   | { type: 'app-closed'; id: string; name: string }
   | { type: 'info'; id: string; info: StudentInfo }
   /** The student's browser, as reported by the web filter extension. */
-  | { type: 'web'; id: string; status: WebStatus };
+  | { type: 'web'; id: string; status: WebStatus }
+  /** A monitor was plugged in, unplugged or rearranged on the teacher's computer. */
+  | { type: 'screens'; screens: TeacherScreen[] };
 
 export interface TeacherApi {
   state(): Promise<TeacherState>;
@@ -118,6 +129,8 @@ export interface TeacherApi {
   /** While enabled, the main process mutes the console's own shortcuts so keys reach the student. */
   control(id: string, sessionId: string, enabled: boolean): void;
   input(id: string, sessionId: string, events: InputEvent[]): void;
+  /** Picks the monitor the next screen capture takes (one of `screens`); null for the main one. */
+  shareScreen(displayId: string | null): Promise<void>;
   broadcastStart(target: Target, sessionId: string): void;
   broadcastStop(): void;
   signal(id: string, sessionId: string, signal: RtcSignal): void;

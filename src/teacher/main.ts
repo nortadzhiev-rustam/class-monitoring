@@ -1,7 +1,8 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeTheme, Notification, shell, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeTheme, Notification, screen, shell, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { orderDisplays } from '../shared/displays';
 import { configureApp, shareScreenWithoutPicker } from '../shared/electron-setup';
 import { pickFiles, pickSavePath } from '../shared/native-dialogs';
 import { randomUUID } from 'node:crypto';
@@ -10,7 +11,7 @@ import { generateClassKey } from '../shared/secure-channel';
 import { cleanRules, type WebRules } from '../shared/web-rules';
 import { toCsv } from './csv';
 import { TeacherFiles } from './files';
-import type { ChatMessage, Group, Target, TeacherEvent, TeacherSettings, TeacherState } from './ipc';
+import type { ChatMessage, Group, Target, TeacherEvent, TeacherScreen, TeacherSettings, TeacherState } from './ipc';
 import { Roster } from './roster';
 import { ClassServer, type ServerConfig } from './server';
 import { wake } from './wake';
@@ -27,6 +28,8 @@ let files: TeacherFiles;
 let controlling = false;
 let quitting = false;
 let appMenu: Menu | null = null;
+/** The monitor "Show my screen" captures; undefined for the main one. */
+let shareDisplay: string | undefined;
 
 const settingsFile = () => path.join(app.getPath('userData'), 'teacher.json');
 
@@ -52,6 +55,11 @@ function saveConfig(config: ServerConfig): void {
   fs.writeFileSync(settingsFile(), JSON.stringify(config, null, 2), { mode: 0o600 });
 }
 
+function screens(): TeacherScreen[] {
+  const primary = screen.getPrimaryDisplay().id;
+  return orderDisplays(screen.getAllDisplays().map((d) => ({ id: String(d.id), bounds: d.bounds, primary: d.id === primary, label: d.label ?? '' })));
+}
+
 function state(): TeacherState {
   const { port, ...settings } = server.settings;
   return {
@@ -62,6 +70,7 @@ function state(): TeacherState {
     roster: roster.list(),
     groups: roster.groups(),
     platform: process.platform as Platform,
+    screens: screens(),
   };
 }
 
@@ -157,6 +166,9 @@ function registerIpc(): void {
   on('teacher:input', (id: string, sessionId: string, events: InputEvent[]) =>
     server.send(id, { type: 'input', sessionId, events }),
   );
+  handle('teacher:share-screen', (displayId: string | null) => {
+    shareDisplay = typeof displayId === 'string' ? displayId.slice(0, 32) : undefined;
+  });
   on('teacher:broadcast-start', (target: Target, sessionId: string) => {
     server.clearPolicy('broadcast');
     server.setPolicy(asTarget(target), { broadcast: String(sessionId) });
@@ -284,7 +296,11 @@ app.on('second-instance', () => {
 
 app.whenReady().then(async () => {
   appMenu = Menu.getApplicationMenu();
-  shareScreenWithoutPicker();
+  shareScreenWithoutPicker(() => shareDisplay);
+  const screensChanged = () => emit({ type: 'screens', screens: screens() });
+  screen.on('display-added', screensChanged);
+  screen.on('display-removed', screensChanged);
+  screen.on('display-metrics-changed', screensChanged);
   roster = new Roster(path.join(app.getPath('userData'), 'roster.json'));
   server = new ClassServer(loadConfig());
   server.on('joined', (student) => emit({ type: 'joined', student, entry: roster.seen(student.info, student.address) }));

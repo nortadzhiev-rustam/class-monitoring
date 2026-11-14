@@ -23,6 +23,11 @@ export interface Layout {
   rects: Array<{ id: string } & Rect>;
 }
 
+/** Main screen first, then left to right (top to bottom on a tie): the order "Screen 1, Screen 2…" is numbered in. */
+export function orderDisplays<T extends DisplayInfo>(displays: T[]): T[] {
+  return [...displays].sort((a, b) => Number(b.primary) - Number(a.primary) || a.bounds.x - b.bounds.x || a.bounds.y - b.bounds.y);
+}
+
 /** Scales the whole desktop arrangement to `width` pixels wide. */
 export function compositeLayout(displays: DisplayInfo[], width: number): Layout {
   if (!displays.length) return { width, height: 0, rects: [] };

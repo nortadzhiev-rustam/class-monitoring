@@ -12,7 +12,7 @@ A LAN classroom-management app in the spirit of NetSupport School: a **teacher c
 | Remote view | Click a student to stream their screen over WebRTC (up to 1920×1200, 20 fps), switching between their monitors |
 | Remote control | "Take control" sends your mouse and keyboard to the screen you're viewing; Cmd↔Ctrl swap between Mac and Windows |
 | Lock screens | Full-screen lock with your message on every monitor |
-| Show my screen | Your screen streamed full-screen to students |
+| Show my screen | Your screen streamed full-screen to students; with several monitors, pick which one and switch while showing |
 
 **Communicate**
 
@@ -81,7 +81,7 @@ npm test           # unit tests
 npm run test:e2e   # both apps, end to end, on this computer
 ```
 
-The end-to-end suite starts a teacher console and several student agents and exercises every feature. Anything that would affect the computer running it is simulated: remote control, opening sites and apps, and power actions run in dry-run mode, the web filter extension is played by the test speaking Chrome's native-messaging protocol, and Wake-on-LAN packets go to a test port. Screenshots land in `tests/output/`. The multi-monitor step only runs when the computer has two or more displays.
+The end-to-end suite starts a teacher console and several student agents and exercises every feature. Anything that would affect the computer running it is simulated: remote control, opening sites and apps, and power actions run in dry-run mode, the web filter extension is played by the test speaking Chrome's native-messaging protocol, and Wake-on-LAN packets go to a test port. Screenshots land in `tests/output/`. The multi-monitor steps only run when the computer has two or more displays.
 
 ### App icons
 
