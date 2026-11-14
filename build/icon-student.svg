@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- ClassMonitor Student: the brand mark in the "connected" green, with the
+       tray icon's ring and dot. Render with `npm run icons`. -->
+  <defs>
+    <linearGradient id="ring" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#9ad6b2"/>
+      <stop offset="1" stop-color="#5fb584"/>
+    </linearGradient>
+    <linearGradient id="core" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#25ab5e"/>
+      <stop offset="1" stop-color="#17804a"/>
+    </linearGradient>
+    <filter id="tile-shadow" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="12" stdDeviation="14" flood-color="#0a2416" flood-opacity="0.28"/>
+    </filter>
+    <filter id="soft" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#0a2416" flood-opacity="0.22"/>
+    </filter>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#ring)" filter="url(#tile-shadow)"/>
+  <rect x="226" y="226" width="572" height="572" rx="70" fill="url(#core)" filter="url(#soft)"/>
+  <g fill="#ffffff" filter="url(#soft)">
+    <path fill-rule="evenodd" d="M512 312a200 200 0 1 1 0 400a200 200 0 1 1 0-400zm0 59a141 141 0 1 0 0 282a141 141 0 1 0 0-282z"/>
+    <circle cx="512" cy="512" r="74"/>
+  </g>
+</svg>

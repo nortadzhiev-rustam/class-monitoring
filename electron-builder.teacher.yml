@@ -11,10 +11,13 @@ extraMetadata:
 
 mac:
   category: public.app-category.education
+  # Rendered from build/icon-teacher.svg by `npm run icons`.
+  icon: build/icon-teacher.png
   target: dmg
 
 win:
   target: nsis
+  icon: build/icon-teacher.png
 nsis:
   oneClick: false
   perMachine: true

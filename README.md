@@ -83,6 +83,10 @@ npm run test:e2e   # both apps, end to end, on this computer
 
 The end-to-end suite starts a teacher console and several student agents and exercises every feature. Anything that would affect the computer running it is simulated: remote control, opening sites and apps, and power actions run in dry-run mode, the web filter extension is played by the test speaking Chrome's native-messaging protocol, and Wake-on-LAN packets go to a test port. Screenshots land in `tests/output/`. The multi-monitor step only runs when the computer has two or more displays.
 
+### App icons
+
+The icons are drawn in `build/icon-teacher.svg` and `build/icon-student.svg`. After changing one, run `npm run icons` to render the 1024×1024 PNGs that the `.app`, `.dmg` and Windows installers are built with.
+
 ## Deploying to a classroom
 
 1. **Teacher:** install ClassMonitor Teacher (`npm run dist:teacher`). On first run it generates a class key. Open **Class settings** to see it, change the room name, and copy the student config.
