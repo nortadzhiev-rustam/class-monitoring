@@ -19,6 +19,11 @@ export const MAX_DOMAINS = 200;
 /** Browsers the extension doesn't cover, closed by the app blocker while rules are on. */
 export const OTHER_BROWSERS = ['firefox', 'safari', 'opera*', 'brave*', 'vivaldi*', 'arc', 'duckduckgo', 'waterfox', 'librewolf', 'tor browser'];
 
+/** "Block all websites": an allow-list with nothing on it, so no page opens. */
+export function blocksEverySite(rules: WebRules | null): boolean {
+  return rules?.mode === 'allow' && rules.domains.length === 0;
+}
+
 /** "https://www.YouTube.com/watch?v=1" -> "youtube.com"; null if it isn't a site. */
 export function normaliseDomain(raw: string): string | null {
   let text = String(raw ?? '').trim().toLowerCase();
@@ -62,7 +67,9 @@ export function toDnrRules(rules: WebRules | null): DnrRule[] {
   if (!rules) return [];
   const blockedPage = (site?: string) => ({
     type: 'redirect' as const,
-    redirect: { extensionPath: site ? `/blocked.html?site=${encodeURIComponent(site)}` : '/blocked.html?mode=allow' },
+    redirect: {
+      extensionPath: site ? `/blocked.html?site=${encodeURIComponent(site)}` : `/blocked.html?mode=${blocksEverySite(rules) ? 'all' : 'allow'}`,
+    },
   });
   if (rules.mode === 'block') {
     return rules.domains.map((domain, i) => ({

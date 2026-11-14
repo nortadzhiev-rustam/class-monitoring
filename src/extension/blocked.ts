@@ -5,6 +5,10 @@ const site = params.get('site');
 
 if (site) {
   document.getElementById('site')!.textContent = site;
+} else if (params.get('mode') === 'all') {
+  document.title = 'Websites are off';
+  document.getElementById('title')!.textContent = 'Websites are off during class';
+  document.getElementById('reason')!.textContent = 'Your teacher has turned off all websites for now.';
 } else if (params.get('mode') === 'allow') {
   document.getElementById('reason')!.textContent = "Your teacher has limited browsing to a few sites, and this isn't one of them.";
 }

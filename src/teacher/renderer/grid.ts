@@ -1,5 +1,6 @@
 // The grid of student cards: thumbnails, status, selection and per-card actions.
 
+import { blocksEverySite } from '../../shared/web-rules';
 import { $, OS_LABEL, plural, prefs, timeAgo } from './dom';
 import * as groups from './groups';
 import * as store from './store';
@@ -159,7 +160,10 @@ function badges(s: Student): HTMLElement[] {
   if (s.displays.length > 1) result.push(pill(`${s.displays.length} screens`, 'chat'));
   if (s.policy.apps) result.push(pill('Apps blocked'));
   // Chrome/Edge open but the extension never reported in: the rules can't apply there.
-  if (s.policy.web) result.push(s.web?.extension || !s.web?.browserOpen ? pill('Web rules on') : pill('Web filter missing', 'hand'));
+  if (s.policy.web) {
+    const rules = blocksEverySite(s.policy.web) ? 'Websites blocked' : 'Web rules on';
+    result.push(s.web?.extension || !s.web?.browserOpen ? pill(rules) : pill('Web filter missing', 'hand'));
+  }
   const site = s.web?.url ? hostname(s.web.url) : null;
   if (site) result.push(pill(site, 'answer'));
   if (s.answer !== null) result.push(pill(s.answer, 'answer'));
