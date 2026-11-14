@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { blit, compositeLayout, toDesktop, type DisplayInfo } from '../../src/shared/displays';
+import { blit, compositeLayout, orderDisplays, toDesktop, type DisplayInfo } from '../../src/shared/displays';
 
 const laptop: DisplayInfo = { id: '1', primary: true, bounds: { x: 0, y: 0, width: 1440, height: 900 } };
 // A bigger monitor to the left of the laptop, top-aligned (negative x, as macOS and Windows report it).
@@ -18,6 +18,14 @@ test('two displays are laid out as arranged, scaled to the width', () => {
     { id: '1', x: 384, y: 0, width: 288, height: 180 },
     { id: '2', x: 0, y: 0, width: 384, height: 216 },
   ]);
+});
+
+test('screens are numbered main first, then left to right, then top to bottom', () => {
+  const right: DisplayInfo = { id: '3', primary: false, bounds: { x: 1440, y: 0, width: 1280, height: 1024 } };
+  const above: DisplayInfo = { id: '4', primary: false, bounds: { x: 1440, y: -1024, width: 1280, height: 1024 } };
+  const input = [right, laptop, above, monitor];
+  assert.deepEqual(orderDisplays(input).map((d) => d.id), ['1', '2', '4', '3']);
+  assert.deepEqual(input.map((d) => d.id), ['3', '1', '4', '2'], 'the input is left as it was');
 });
 
 test('blit copies rows into place and clips at the edges', () => {

@@ -227,7 +227,10 @@ await step(
 );
 
 await step('broadcast shows the teacher screen on the student', async () => {
+  // With several monitors the button first asks which one; take the main screen.
+  const asks = (await page.locator('#broadcast.pick-screen').count()) > 0;
   await page.click('#broadcast');
+  if (asks) await page.click('.menu button >> nth=0');
   await page.waitForSelector('#banner:not([hidden])', { timeout: 10_000 });
   let overlay = null;
   await waitFor(async () => (overlay = await primaryOverlay(student)) !== null);
@@ -237,6 +240,56 @@ await step('broadcast shows the teacher screen on the student', async () => {
   await page.click('#broadcast');
   await waitFor(async () => overlayPages(student).length === 0);
 });
+
+await step(
+  'with two monitors: the teacher picks the screen to show and switches while showing',
+  async () => {
+    const screens = await page.evaluate(async () => (await window.teacher.state()).screens);
+    if (screens.length < 2) throw new Error(`skipped: this computer has ${screens.length} display`);
+    const [first, second] = screens;
+    // The capture source (like "screen:3:0") each monitor should give, and the one each capture really took.
+    const sourceOf = await teacher.evaluate(async ({ desktopCapturer }) =>
+      Object.fromEntries((await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } })).map((s) => [s.display_id, s.id])),
+    );
+    await page.evaluate(() => {
+      window.e2eCaptures = [];
+      const original = MediaDevices.prototype.getDisplayMedia;
+      MediaDevices.prototype.getDisplayMedia = async function (...args) {
+        const stream = await original.apply(this, args);
+        window.e2eCaptures.push(stream.getVideoTracks()[0]?.getSettings().deviceId);
+        return stream;
+      };
+    });
+    const captured = () => page.evaluate(() => window.e2eCaptures.at(-1));
+
+    await page.click('#broadcast.pick-screen');
+    const items = await page.locator('.menu button').allTextContents();
+    if (items.length !== screens.length || !items[1].startsWith('Screen 2')) throw new Error(`menu shows ${JSON.stringify(items)}`);
+    await page.click('.menu button >> nth=1');
+    await page.waitForSelector(`#banner-screens button[data-display="${second.id}"][aria-selected="true"]`, { timeout: 10_000 });
+    if ((await captured()) !== sourceOf[second.id]) throw new Error(`captured ${await captured()}, not screen 2 (${sourceOf[second.id]})`);
+    let overlay = null;
+    await waitFor(async () => (overlay = await primaryOverlay(student)) !== null);
+    const frames = () => overlay.evaluate(() => document.querySelector('#video').getVideoPlaybackQuality().totalVideoFrames);
+    await waitFor(async () => (await frames()) > 0, 15_000);
+    await page.screenshot({ path: path.join(out, '18-pick-screen-banner.png') });
+    await overlay.screenshot({ path: path.join(out, '19-broadcast-screen-2.png') });
+
+    // Switching back keeps the student's window open; its picture moves to screen 1.
+    const before = await frames();
+    await page.click(`#banner-screens button[data-display="${first.id}"]`);
+    await page.waitForSelector(`#banner-screens button[data-display="${first.id}"][aria-selected="true"]`, { timeout: 10_000 });
+    if ((await captured()) !== sourceOf[first.id]) throw new Error(`captured ${await captured()}, not screen 1 (${sourceOf[first.id]})`);
+    await waitFor(async () => (await frames()) > before);
+    if (overlay.isClosed()) throw new Error("the student's window closed while switching");
+    await overlay.screenshot({ path: path.join(out, '20-broadcast-screen-1.png') });
+
+    await page.click('#broadcast');
+    await waitFor(async () => overlayPages(student).length === 0);
+    return items.join(' / ');
+  },
+  { soft: true },
+);
 
 await step('a message pops up on the student', async () => {
   await page.click('#message');

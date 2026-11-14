@@ -11,6 +11,8 @@ extraMetadata:
 
 mac:
   category: public.app-category.education
+  # Rendered from build/icon-student.svg by `npm run icons`.
+  icon: build/icon-student.png
   target: pkg
   extendInfo:
     # Menu-bar agent: no Dock icon.
@@ -21,6 +23,7 @@ mac:
 
 win:
   target: nsis
+  icon: build/icon-student.png
   extraResources:
     - from: native/windows
       to: native/windows

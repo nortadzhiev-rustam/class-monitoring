@@ -13,6 +13,7 @@ const api: TeacherApi = {
   viewStop: (id, sessionId) => ipcRenderer.send('teacher:view-stop', id, sessionId),
   control: (id, sessionId, enabled) => ipcRenderer.send('teacher:control', id, sessionId, enabled),
   input: (id, sessionId, events) => ipcRenderer.send('teacher:input', id, sessionId, events),
+  shareScreen: (displayId) => ipcRenderer.invoke('teacher:share-screen', displayId),
   broadcastStart: (target, sessionId) => ipcRenderer.send('teacher:broadcast-start', target, sessionId),
   broadcastStop: () => ipcRenderer.send('teacher:broadcast-stop'),
   signal: (id, sessionId, signal) => ipcRenderer.send('teacher:signal', id, sessionId, signal),

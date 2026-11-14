@@ -203,6 +203,9 @@ body.darwin .topbar { padding-left: 84px; }
   font-weight: 500;
 }
 .banner[hidden] { display: none; }
+.banner .screens { margin-left: 0; }
+/* The ▾ shows only when "Show my screen" will ask which monitor. */
+#broadcast:not(.pick-screen) .caret { display: none; }
 .live { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); animation: pulse 1.6s infinite; }
 @keyframes pulse { 50% { opacity: 0.35; } }
 

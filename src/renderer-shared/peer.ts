@@ -42,6 +42,16 @@ export class Peer {
     this.setMaxBitrate(maxBitrate);
   }
 
+  /** Sends another screen on the same connection, without renegotiating (the teacher switched monitors). */
+  replaceScreen(stream: MediaStream): void {
+    const track = stream.getVideoTracks()[0];
+    if (!track) return;
+    track.contentHint = 'detail';
+    for (const sender of this.pc.getSenders()) {
+      if (sender.track?.kind === 'video') void sender.replaceTrack(track).catch((err) => console.warn('[peer] screen not replaced', err));
+    }
+  }
+
   /** Caps the video this side sends; can be changed while streaming. */
   setMaxBitrate(maxBitrate: number): void {
     for (const sender of this.pc.getSenders()) {

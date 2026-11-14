@@ -1,6 +1,7 @@
 // Full-size remote view of one student, with optional remote control.
 
 import { Peer } from '../../renderer-shared/peer';
+import { orderDisplays } from '../../shared/displays';
 import type { InputEvent, RtcSignal } from '../../shared/protocol';
 import { $, api, OS_LABEL } from './dom';
 import * as store from './store';
@@ -71,7 +72,7 @@ export function open(s: Student, control: boolean, displayId?: string): void {
 function renderScreens(): void {
   const s = viewer && store.get(viewer.id);
   const tabs = $('#viewer-screens');
-  const displays = [...(s?.displays ?? [])].sort((a, b) => Number(b.primary) - Number(a.primary) || a.bounds.x - b.bounds.x);
+  const displays = orderDisplays(s?.displays ?? []);
   tabs.hidden = displays.length < 2;
   if (!viewer || displays.length < 2) return;
   const showing = viewer.displayId ?? displays[0].id;

@@ -128,7 +128,7 @@ $('#lock').addEventListener('click', () => {
   dialogs.askLock(to, (message) => api.lock(to.target, message));
 });
 $('#unlock').addEventListener('click', () => api.unlock(targets.current().target));
-$('#broadcast').addEventListener('click', () => (broadcast.active() ? broadcast.stop() : void broadcast.start(targets.current())));
+$('#broadcast').addEventListener('click', () => broadcast.toggle($('#broadcast'), targets.current));
 $('#message').addEventListener('click', () => sendMessage(targets.current()));
 $('#poll').addEventListener('click', () => poll.openDialog(targets.current()));
 $('#register').addEventListener('click', () => void register.start(targets.current()));
@@ -234,6 +234,9 @@ api.onEvent((event: TeacherEvent) => {
     case 'web':
       store.setWeb(event.id, event.status);
       break;
+    case 'screens':
+      broadcast.setScreens(event.screens);
+      break;
     case 'app-closed': {
       const s = store.get(event.id);
       toast(`${s ? store.displayName(s) : 'A student'} tried to open ${event.name}; it was closed.`, 'info');
@@ -249,6 +252,6 @@ api.onEvent((event: TeacherEvent) => {
 
 void api.state().then((initial) => {
   document.body.classList.add(initial.platform);
-  broadcast.init(initial.platform);
+  broadcast.init(initial.platform, initial.screens);
   applyState(initial);
 });
