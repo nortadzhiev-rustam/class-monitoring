@@ -382,8 +382,9 @@
       </label>
       <div class="field">
         <span>Student config file</span>
-        <p class="muted small">Put this in <code id="config-path-win"></code> on Windows or <code id="config-path-mac"></code> on macOS. Discovery is automatic on the same network; <code>teacherHost</code> is only needed if broadcasts are blocked.</p>
+        <p class="muted small">Save it as <code>student.json</code> into <code id="config-path-win"></code> on Windows or <code id="config-path-mac"></code> on macOS. The Windows student installer creates that folder; File Explorer hides <code>ProgramData</code>, so paste the path into its address bar. Without the file, students join from their setup window. <code>teacherHost</code> is only needed if broadcasts are blocked.</p>
         <pre id="set-snippet"></pre>
+        <button class="btn small save-config" id="save-config" type="button">Save student.json…</button>
       </div>
       <p class="error" id="settings-error" hidden></p>
       <menu>
