@@ -103,10 +103,12 @@ The icons are drawn in `build/icon-teacher.svg` and `build/icon-student.svg`. Af
    ```
 
    Optional: `"teacherHost": "10.0.4.20"` if the network blocks UDP broadcast, `"displayName"` to override the computer name, `"extensionIds"` for the published web filter (below). Make the file readable by students but writable only by admins.
+
+   **Save student.json…** in the teacher's Class settings writes this file for you. The Windows student installer creates `C:\ProgramData\ClassMonitor` (admins can write, students only read). File Explorer hides `ProgramData`: paste the path into the address bar. On macOS, create `/Library/Application Support/ClassMonitor` yourself.
 3. **macOS students:** push a PPPC profile through MDM that grants ClassMonitor Student **Screen Recording**, **Accessibility** (remote control) and **Automation** of System Events and loginwindow (power controls). Without it each student approves the prompts by hand.
 4. **Network:** students listen on UDP **47800** for teacher beacons; the teacher accepts TCP **47801**. The Windows installers add these firewall rules (domain and private profiles). Wake-on-LAN also needs it turned on in each PC's firmware and network card settings.
 
-The student agent starts at login and has no way to quit it from the app (no menu, no Dock icon). It never blocks logging out or shutting down.
+The student agent starts at login and has no way to quit it from the app (no menu, no Dock icon). It never blocks logging out or shutting down. On Windows the installer and uninstaller stop it themselves, so updating or removing it (Settings → Apps, admin rights needed) doesn't ask anyone to close it.
 
 ### Website blocking: the Chrome/Edge extension
 

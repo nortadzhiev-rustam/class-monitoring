@@ -221,6 +221,14 @@ function registerIpc(): void {
     fs.writeFileSync(file, toCsv(clean));
     return file;
   });
+  handle('teacher:save-student-config', async (config: { room?: unknown; classKey?: unknown; teacherHost?: unknown }) => {
+    const file = await pickSavePath(win, path.join(app.getPath('documents'), 'student.json'), [{ name: 'Student config (JSON)', extensions: ['json'] }]);
+    if (!file) return null;
+    const text = (value: unknown) => clip(String(value ?? '').trim(), 200);
+    const json = { room: text(config?.room), classKey: text(config?.classKey), teacherHost: text(config?.teacherHost) || undefined };
+    fs.writeFileSync(file, `${JSON.stringify(json, null, 2)}\n`);
+    return file;
+  });
   handle('teacher:send-files', async (target: Target) => {
     const picked = await pickFiles(win, 'Choose files to send to students');
     if (!picked.length) return null;

@@ -148,6 +148,8 @@ export interface TeacherApi {
   registerEnd(): void;
   /** Asks where to save, then writes the rows as CSV; resolves to the path or null if cancelled. */
   saveCsv(defaultName: string, rows: string[][]): Promise<string | null>;
+  /** Asks where to save student.json (for IT to copy onto student computers); resolves to the path or null. */
+  saveStudentConfig(config: { room: string; classKey: string; teacherHost: string }): Promise<string | null>;
   /** Picks files and sends them to the target's online students; null if cancelled. */
   sendFiles(target: Target): Promise<{ batchId: string; files: string[]; students: number } | null>;
   collectStart(target: Target, title: string): Promise<Collect & { folder: string }>;

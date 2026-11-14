@@ -366,6 +366,17 @@ await step('the register collects names and exports a CSV', async () => {
   return csv.split('\r\n')[1];
 });
 
+await step('class settings save a student.json the agent can read', async () => {
+  await page.click('#settings');
+  await page.click('#save-config');
+  await page.waitForSelector('.toast.info:has-text("Copy it onto each student computer")', { timeout: 5000 });
+  // The save dialog is preset to the same path as the register export (CM_TEST_SAVE).
+  const saved = JSON.parse(readFileSync(registerCsv, 'utf8'));
+  if (saved.room !== 'E2E Room' || saved.classKey !== 'e2e-test-class-key') throw new Error(`unexpected file: ${JSON.stringify(saved)}`);
+  await page.click('#settings-dialog button[value="cancel"]');
+  return `room "${saved.room}", teacherHost ${saved.teacherHost ?? 'none'}`;
+});
+
 await step('files handed out arrive byte-identical', async () => {
   await page.click('#files');
   await page.click('.menu button:has-text("Send files")');

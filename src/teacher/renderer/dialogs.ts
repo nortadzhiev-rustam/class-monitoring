@@ -1,7 +1,7 @@
 // Modal dialogs: lock message, student message, short text and class settings.
 
 import type { TeacherState } from '../ipc';
-import { $, api, errorText } from './dom';
+import { $, api, errorText, toast } from './dom';
 import type { Resolved } from './targets';
 
 const lockDialog = $<HTMLDialogElement>('#lock-dialog');
@@ -130,8 +130,16 @@ export function openSettings(current: TeacherState): void {
   settingsDialog.showModal();
 }
 
-$('#config-path-win').textContent = 'C:\\ProgramData\\ClassMonitor\\student.json';
-$('#config-path-mac').textContent = '/Library/Application Support/ClassMonitor/student.json';
+$('#config-path-win').textContent = 'C:\\ProgramData\\ClassMonitor';
+$('#config-path-mac').textContent = '/Library/Application Support/ClassMonitor';
+$('#save-config').addEventListener('click', async () => {
+  try {
+    const file = await api.saveStudentConfig({ room: setRoom.value.trim(), classKey: setKey.value.trim(), teacherHost: state.addresses[0] ?? '' });
+    if (file) toast(`Saved ${file}. Copy it onto each student computer.`, 'info');
+  } catch (err) {
+    toast(errorText(err));
+  }
+});
 for (const input of [setRoom, setKey]) input.addEventListener('input', () => ($('#set-snippet').textContent = studentConfigSnippet()));
 $('#copy-key').addEventListener('click', () => api.copy(setKey.value.trim()));
 $('#new-key').addEventListener('click', async () => {
