@@ -175,7 +175,7 @@ function applyState(next: TeacherState): void {
   $('#room-name').textContent = state.settings.room;
   $('#empty-room').textContent = state.settings.room;
   $('#empty-key').textContent = state.settings.classKey;
-  store.load(state.roster, state.students);
+  store.load(state.roster, state.students, state.order);
   groups.load(state.groups);
 }
 

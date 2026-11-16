@@ -69,6 +69,7 @@ function state(): TeacherState {
     students: server.list(),
     roster: roster.list(),
     groups: roster.groups(),
+    order: roster.order(),
     platform: process.platform as Platform,
     screens: screens(),
   };
@@ -205,6 +206,7 @@ function registerIpc(): void {
   });
   on('teacher:poll-end', () => server.clearPolicy('poll'));
   handle('teacher:save-groups', (groups: Group[]) => roster.setGroups(groups));
+  handle('teacher:save-order', (ids: string[]) => roster.setOrder(ids));
   handle('teacher:register-start', (target: Target) => {
     const registerId = randomUUID();
     server.clearPolicy('register');

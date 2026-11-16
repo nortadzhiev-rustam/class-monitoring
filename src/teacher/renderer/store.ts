@@ -4,6 +4,7 @@
 import type { DisplayInfo } from '../../shared/displays';
 import { OPEN_POLICY, type Platform, type Policy, type StudentInfo, type WebStatus } from '../../shared/protocol';
 import type { RosterEntry, StudentStatus, StudentSummary } from '../ipc';
+import { arrange } from '../order';
 
 export interface Student {
   id: string;
@@ -35,6 +36,8 @@ type Extras = Pick<Student, 'unread' | 'answer'>;
 const OFFLINE_STATUS: StudentStatus = { locked: false, viewing: false, controlled: false, hand: null };
 
 const students = new Map<string, Student>();
+/** Student ids as the teacher arranged the cards; empty for name order. */
+let order: string[] = [];
 /** `id` is the student that changed, or null when many did. */
 type Listener = (id: string | null) => void;
 const listeners = new Set<Listener>();
@@ -60,17 +63,33 @@ export function get(id: string): Student | undefined {
   return students.get(id);
 }
 
-/** All known students, sorted by name so cards keep their place. */
+/** All known students, sorted by name (for lists like the register). */
 export function all(): Student[] {
-  return [...students.values()].sort((a, b) => displayName(a).localeCompare(displayName(b), undefined, { numeric: true }));
+  return arrange([...students.values()], [], displayName);
+}
+
+/** All known students in the grid's order: as the teacher arranged them, else by name. */
+export function inCardOrder(): Student[] {
+  return arrange([...students.values()], order, displayName);
+}
+
+/** Whether the teacher has dragged the cards out of name order. */
+export function arranged(): boolean {
+  return order.some((id) => students.has(id));
+}
+
+export function setOrder(ids: string[]): void {
+  order = [...ids];
+  changed(null);
 }
 
 function fromEntry(entry: RosterEntry): Student {
   return { ...entry, displays: [], web: null, online: false, status: OFFLINE_STATUS, policy: OPEN_POLICY, handSince: null, unread: 0, answer: null };
 }
 
-export function load(roster: RosterEntry[], online: StudentSummary[]): void {
+export function load(roster: RosterEntry[], online: StudentSummary[], savedOrder: string[]): void {
   students.clear();
+  order = [...savedOrder];
   for (const entry of roster) students.set(entry.id, fromEntry(entry));
   for (const summary of online) setOnline(summary);
   changed(null);
@@ -144,7 +163,7 @@ export function setName(id: string, name: string): void {
   const s = students.get(id);
   if (!s) return;
   students.set(id, { ...s, name });
-  changed(null); // Names decide the card order.
+  changed(null); // Names can decide the card order.
 }
 
 export function setPolicy(id: string, policy: Policy): void {
@@ -155,5 +174,6 @@ export function setPolicy(id: string, policy: Policy): void {
 }
 
 export function forget(id: string): void {
+  order = order.filter((other) => other !== id);
   if (students.delete(id)) changed(null);
 }

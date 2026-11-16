@@ -24,6 +24,7 @@ const api: TeacherApi = {
   pollEnd: () => ipcRenderer.send('teacher:poll-end'),
   attention: (title, body) => ipcRenderer.send('teacher:attention', title, body),
   saveGroups: (groups) => ipcRenderer.invoke('teacher:save-groups', groups),
+  saveOrder: (ids) => ipcRenderer.invoke('teacher:save-order', ids),
   registerStart: (target) => ipcRenderer.invoke('teacher:register-start', target),
   registerEnd: () => ipcRenderer.send('teacher:register-end'),
   saveCsv: (defaultName, rows) => ipcRenderer.invoke('teacher:save-csv', defaultName, rows),

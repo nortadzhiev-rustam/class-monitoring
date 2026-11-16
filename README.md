@@ -29,6 +29,7 @@ A LAN classroom-management app in the spirit of NetSupport School: a **teacher c
 | --- | --- |
 | Register | Students sign in with their name; see who's present or missing and export a CSV |
 | Groups | Named groups as chips above the grid; any action can target a group |
+| Arrange computers | Drag cards into your own order, e.g. to match where the computers stand in the room. The order is kept across restarts, new computers join at the end, and **Sort by name** puts it back |
 | Send files | Hand out worksheets into students' `Documents/ClassMonitor/From teacher` |
 | Collect work | Students hand in files into your `Documents/ClassMonitor/Collected/<title>/<student>` |
 

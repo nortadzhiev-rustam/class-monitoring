@@ -1,7 +1,7 @@
 // End-to-end check on one machine: starts a teacher console and student agents,
 // then exercises discovery, thumbnails, lock/unlock, remote view, remote control
 // (dry run: the real mouse is never moved), broadcast, auth, first-run setup,
-// selection targeting, late joiners, offline cards and disconnect safety.
+// selection targeting, late joiners, offline cards, card order and disconnect safety.
 //
 // Overlays open as small windows (CM_OVERLAY_WINDOWED) so the test never takes
 // over the screen. Screenshots go to tests/output/.
@@ -620,6 +620,24 @@ await step('a group lock reaches only that group, also after a reconnect', async
   return target;
 });
 
+const cardOrder = () => page.$$eval('#grid .card', (els) => els.map((el) => el.dataset.id));
+/** The card order after dragging, to check it survives a restart. */
+let arranged = null;
+
+await step('dragging a card moves it to that place', async () => {
+  const before = await cardOrder();
+  if (before.length < 2) throw new Error(`only ${before.length} card(s) to arrange`);
+  const [first] = before;
+  const last = before[before.length - 1];
+  // Onto the left half of the first card: the last one goes in front of it.
+  await page.dragAndDrop(`.card[data-id="${last}"] footer`, `.card[data-id="${first}"] .screen`, { targetPosition: { x: 10, y: 40 } });
+  const after = await cardOrder();
+  if (after[0] !== last || after.length !== before.length) throw new Error(`order is now ${after.join(', ')}`);
+  await page.waitForSelector('#sort-name:not([hidden])', { timeout: 2000 });
+  arranged = after;
+  return `${after.length} cards`;
+});
+
 await step('a student who joins late gets the class lock', async () => {
   await lockTarget('Late again');
   const late = await launchStudent('late');
@@ -667,6 +685,19 @@ await step('the roster survives a teacher restart', async () => {
   if (await page.locator(card('late')).count()) throw new Error('a forgotten student came back');
   await page.waitForSelector('.view-chip:has-text("Table 1")', { timeout: 5000 });
   await page.waitForSelector(`${card('student')} .name:has-text("Ada Lovelace")`);
+});
+
+await step('the card order survives the restart, and Sort by name resets it', async () => {
+  if (!arranged) throw new Error('no order was arranged earlier');
+  const known = (await cardOrder()).filter((id) => arranged.includes(id));
+  const expected = arranged.filter((id) => known.includes(id));
+  if (known.join() !== expected.join()) throw new Error(`order is ${known.join(', ')}, expected ${expected.join(', ')}`);
+  await page.click('#sort-name');
+  await page.click('#confirm-ok');
+  await page.waitForSelector('#sort-name', { state: 'hidden', timeout: 2000 });
+  const names = await page.$$eval('#grid .card .name', (els) => els.map((el) => el.textContent));
+  const sorted = [...names].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  if (names.join() !== sorted.join()) throw new Error(`not in name order: ${names.join(', ')}`);
   await teacher.close();
 });
 

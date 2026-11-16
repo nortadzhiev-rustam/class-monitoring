@@ -1,7 +1,10 @@
-// The grid of student cards: thumbnails, status, selection and per-card actions.
+// The grid of student cards: thumbnails, status, selection, per-card actions,
+// and the order the teacher drags the cards into.
 
 import { blocksEverySite } from '../../shared/web-rules';
-import { $, OS_LABEL, plural, prefs, timeAgo } from './dom';
+import { rearrange } from '../order';
+import { askConfirm } from './dialogs';
+import { $, api, errorText, OS_LABEL, plural, prefs, timeAgo, toast } from './dom';
 import * as groups from './groups';
 import * as store from './store';
 import type { Student } from './store';
@@ -26,6 +29,7 @@ const cards = new Map<string, Card>();
 const grid = $('#grid');
 const cardTemplate = $<HTMLTemplateElement>('#card-template');
 const showOfflineInput = $<HTMLInputElement>('#show-offline');
+const sortButton = $<HTMLButtonElement>('#sort-name');
 let actions: CardActions;
 
 const remembered = prefs.get;
@@ -57,6 +61,12 @@ export function init(cardActions: CardActions): void {
   zoom.addEventListener('input', applyZoom);
   applyZoom();
 
+  initArranging();
+  sortButton.addEventListener('click', async () => {
+    const ok = await askConfirm('Sort the cards by name?', 'The order you dragged the computers into is replaced by name order.', 'Sort by name');
+    if (ok) void saveOrder([]);
+  });
+
   // Offline cards say how long ago each computer was seen; keep that fresh.
   setInterval(() => {
     for (const s of store.all()) if (!s.online) renderCard(s.id);
@@ -67,7 +77,7 @@ const visible = (s: Student) => groups.inView(s.id) && (s.online || showOfflineI
 
 /** Ids of the cards on screen, in display order (for Shift-click ranges and Select all). */
 export function visibleIds(): string[] {
-  return store.all().filter(visible).map((s) => s.id);
+  return store.inCardOrder().filter(visible).map((s) => s.id);
 }
 
 function createCard(id: string): Card {
@@ -181,8 +191,8 @@ function hostname(url: string): string | null {
 function renderAll(): void {
   for (const id of [...cards.keys()]) if (!store.get(id)) removeCard(id);
   for (const s of store.all()) renderCard(s.id);
-  // Re-append in sorted order; moving existing nodes keeps their thumbnails.
-  for (const s of store.all()) {
+  // Re-append in card order; moving existing nodes keeps their thumbnails.
+  for (const s of store.inCardOrder()) {
     const card = cards.get(s.id);
     if (card?.el.isConnected) grid.append(card.el);
   }
@@ -190,12 +200,87 @@ function renderAll(): void {
   updateCounts();
 }
 
-/** Inserts a new card in name order. */
+/** Inserts a new card at its place in the card order. */
 function place(card: Card, id: string): void {
   const order = visibleIds();
   const next = order.slice(order.indexOf(id) + 1).find((other) => cards.get(other)?.el.isConnected);
   if (next) grid.insertBefore(card.el, cards.get(next)!.el);
   else grid.append(card.el);
+}
+
+// ---------------------------------------------------------------- arranging
+// Drag a card onto another to move it there (e.g. to match the room's seating).
+// The other cards make room while dragging; letting go saves the order, and
+// Esc or letting go outside the grid puts the card back.
+
+const DRAG_TYPE = 'application/x-classmonitor-card';
+/** The card being dragged, while a drag is on. */
+let dragged: HTMLElement | null = null;
+let dropped = false;
+
+function initArranging(): void {
+  // Listen on the whole grid area so dropping below the last row works too.
+  const area = grid.parentElement!;
+  grid.addEventListener('dragstart', (e) => {
+    const el = e.target as HTMLElement;
+    if (!el.classList?.contains('card') || !e.dataTransfer) return;
+    dragged = el;
+    dropped = false;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData(DRAG_TYPE, el.dataset.id!);
+    // Fade the card once the browser has taken its picture for the drag.
+    requestAnimationFrame(() => dragged === el && el.classList.add('dragging'));
+  });
+  area.addEventListener('dragover', (e) => {
+    // Only our own cards: not files or text dragged in from elsewhere.
+    if (!dragged || !e.dataTransfer?.types.includes(DRAG_TYPE)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    moveDragged(e.target as HTMLElement, e.clientX, e.clientY);
+  });
+  area.addEventListener('drop', (e) => {
+    if (!dragged || !e.dataTransfer?.types.includes(DRAG_TYPE)) return;
+    e.preventDefault();
+    dropped = true;
+    const before = store.inCardOrder().map((s) => s.id);
+    const shown = [...grid.children].map((el) => (el as HTMLElement).dataset.id!);
+    const after = rearrange(before, shown);
+    if (after.some((id, i) => id !== before[i])) void saveOrder(after);
+  });
+  grid.addEventListener('dragend', () => {
+    if (!dragged) return;
+    dragged.classList.remove('dragging');
+    dragged = null;
+    if (!dropped) renderAll();
+  });
+}
+
+/** Moves the dragged card next to the one under the pointer: before it on its left half, after it on its right. */
+function moveDragged(target: HTMLElement, x: number, y: number): void {
+  if (!dragged) return;
+  const over = target.closest<HTMLElement>('.card');
+  if (over) {
+    if (over === dragged) return;
+    const { left, width } = over.getBoundingClientRect();
+    if (x < left + width / 2) {
+      if (over.previousElementSibling !== dragged) over.before(dragged);
+    } else if (over.nextElementSibling !== dragged) over.after(dragged);
+    return;
+  }
+  // Past the last card (beside it or below the grid): move to the end.
+  const last = grid.lastElementChild as HTMLElement | null;
+  if (!last || last === dragged) return;
+  const box = last.getBoundingClientRect();
+  if (y > box.bottom || (y > box.top && x > box.right)) grid.append(dragged);
+}
+
+async function saveOrder(ids: string[]): Promise<void> {
+  store.setOrder(ids); // Show it at once; roster.json catches up.
+  try {
+    await api.saveOrder(ids);
+  } catch (err) {
+    toast(errorText(err));
+  }
 }
 
 function removeCard(id: string): void {
@@ -228,4 +313,5 @@ function updateCounts(): void {
       ? 'Nobody is online yet'
       : 'Waiting for students';
   $('#select-all').title = `Select ${plural(visibleIds().length, 'visible student')}`;
+  sortButton.hidden = !store.arranged();
 }
