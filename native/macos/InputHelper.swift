@@ -3,6 +3,9 @@
 // posts the matching CGEvents. macOS only delivers them when the launching app
 // (ClassMonitor Student) has the Accessibility permission.
 //
+// `--lock` instead swallows the student's own keyboard and mouse clicks while
+// the lock screen or the teacher's screen is up (see src/student/input-lock.ts).
+//
 // `--dry-run` prints the events instead of posting them, for testing.
 
 import CoreGraphics
@@ -10,6 +13,8 @@ import Foundation
 
 let dryRun = CommandLine.arguments.contains("--dry-run")
 let source = CGEventSource(stateID: .hidSystemState)
+/// Tags the events this helper posts, so a --lock helper lets remote control through.
+let classMonitorMark: Int64 = 0x434D_4F4E
 
 var heldButtons = Set<Int>()
 var heldKeys = Set<CGKeyCode>()
@@ -29,6 +34,7 @@ func post(_ event: CGEvent?, _ description: @autoclosure () -> String) {
     print(description())
     fflush(stdout)
   } else {
+    event.setIntegerValueField(.eventSourceUserData, value: classMonitorMark)
     event.post(tap: .cghidEventTap)
   }
 }
@@ -93,6 +99,53 @@ func releaseAll() {
   for code in heldKeys { key(code, down: false) }
   flags = []
 }
+
+/// The event tap while --lock is on (global, so the C callback can switch it back on).
+var lockTap: CFMachPort?
+
+/// --lock: swallows keys and mouse clicks until stdin closes (the lock ended, or
+/// ClassMonitor quit or crashed). Events carrying `classMonitorMark` get
+/// through. Exits with 3 when macOS refuses the tap (no Accessibility permission).
+func runLock() -> Never {
+  if !dryRun {
+    let blocked: [CGEventType] = [
+      .keyDown, .keyUp, .flagsChanged, .scrollWheel,
+      .leftMouseDown, .leftMouseUp, .rightMouseDown, .rightMouseUp, .otherMouseDown, .otherMouseUp,
+      .leftMouseDragged, .rightMouseDragged, .otherMouseDragged,
+    ]
+    let mask = blocked.reduce(CGEventMask(0)) { $0 | (CGEventMask(1) << CGEventMask($1.rawValue)) }
+    let tap = CGEvent.tapCreate(
+      tap: .cgSessionEventTap, place: .headInsertEventTap, options: .defaultTap, eventsOfInterest: mask,
+      callback: { _, type, event, _ in
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+          // macOS switches off a tap it thinks is stuck; switch it straight back on.
+          if let tap = lockTap { CGEvent.tapEnable(tap: tap, enable: true) }
+          return Unmanaged.passUnretained(event)
+        }
+        return event.getIntegerValueField(.eventSourceUserData) == classMonitorMark ? Unmanaged.passUnretained(event) : nil
+      },
+      userInfo: nil)
+    guard let tap = tap else {
+      FileHandle.standardError.write(Data("macOS refused the event tap (no Accessibility permission?); keyboard and mouse stay usable\n".utf8))
+      exit(3)
+    }
+    lockTap = tap
+    CFRunLoopAddSource(CFRunLoopGetMain(), CFMachPortCreateRunLoopSource(nil, tap, 0), .commonModes)
+    CGEvent.tapEnable(tap: tap, enable: true)
+  }
+  print("locked")
+  fflush(stdout)
+  Thread {
+    while readLine() != nil {}
+    print("unlocked")
+    fflush(stdout)
+    exit(0)
+  }.start()
+  CFRunLoopRun()
+  exit(0)
+}
+
+if CommandLine.arguments.contains("--lock") { runLock() }
 
 while let line = readLine() {
   let parts = line.split(separator: " ").map(String.init)

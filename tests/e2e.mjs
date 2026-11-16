@@ -145,13 +145,20 @@ await step('locking everyone shows the message on the student', async () => {
   await waitFor(async () => (overlay = await primaryOverlay(student)) !== null);
   await overlay.waitForFunction(() => document.getElementById('message')?.textContent === 'Pens down, eyes up');
   await overlay.screenshot({ path: path.join(out, '2-lock-screen.png') });
-  return `${overlayPages(student).length} overlay window(s)`;
+  // The keyboard and mouse lock starts with the lock screen (dry run: it only logs).
+  await waitFor(async () => helperLog.join('').includes('[input-lock] locked')).catch(() => {
+    throw new Error('the keyboard and mouse lock did not start');
+  });
+  return `${overlayPages(student).length} overlay window(s), input locked`;
 });
 
 await step('unlocking everyone removes the lock screen', async () => {
   await page.click('#unlock');
   await page.waitForSelector('.card:not(.locked)', { timeout: 10_000 });
   await waitFor(async () => overlayPages(student).length === 0);
+  await waitFor(async () => helperLog.join('').includes('[input-lock] unlocked')).catch(() => {
+    throw new Error('the keyboard and mouse lock did not end');
+  });
 });
 
 await step('remote view streams the student screen', async () => {

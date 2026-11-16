@@ -16,6 +16,7 @@ import { isManagedConfig, loadStudentConfig, type StudentConfig } from './config
 import { TeacherLink } from './connection';
 import { handleFileMessage, resetFiles, showCollect } from './files';
 import { handNote, lowerHand } from './hand';
+import { restoreAfterCrash } from './input-lock';
 import { openApp, openUrl } from './launch';
 import { isNativeHostLaunch, runNativeHost } from './native-host';
 import { Overlay } from './overlay';
@@ -279,6 +280,7 @@ app.whenReady().then(() => {
   shareScreenWithoutPicker();
 
   overlay = new Overlay(preload);
+  restoreAfterCrash();
   registerIpc();
   initPrompts(preload);
   initChat(preload);

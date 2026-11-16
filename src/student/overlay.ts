@@ -1,13 +1,18 @@
 // Full-screen windows that cover every display while the class is locked or
 // while the teacher is showing their screen. Broadcast takes precedence over
 // lock; when it ends a still-locked student goes back to the lock screen.
+// While either is up the keyboard and mouse are blocked (input-lock.ts) and
+// the windows keep themselves above everything, the taskbar and Dock included.
 
 import { app, BrowserWindow, screen } from 'electron';
 import path from 'node:path';
+import { setInputLock } from './input-lock';
 import type { OverlayState } from './ipc';
 
 /** Development/testing: small ordinary windows instead of taking over the screen. */
 const WINDOWED = process.env.CM_OVERLAY_WINDOWED === '1';
+/** How often the windows put themselves back on top, over anything that popped up since. */
+const RAISE_EVERY_MS = 1000;
 
 /** Lock windows refuse to close, except when the app itself is quitting (logout, shutdown). */
 let quitting = false;
@@ -16,6 +21,7 @@ app.on('before-quit', () => (quitting = true));
 export class Overlay {
   private windows: BrowserWindow[] = [];
   private primary: BrowserWindow | null = null;
+  private raiseTimer: NodeJS.Timeout | null = null;
   private lockMessage: string | null = null;
   private broadcastSessionId: string | null = null;
   private teacher = 'your teacher';
@@ -93,6 +99,7 @@ export class Overlay {
 
   private sync(): void {
     const active = this.lockMessage !== null || this.broadcastSessionId !== null;
+    setInputLock(active);
     if (!active) {
       this.destroyAll();
       return;
@@ -116,6 +123,11 @@ export class Overlay {
       const win = this.createWindow(display, isPrimary);
       this.windows.push(win);
       if (isPrimary) this.primary = win;
+    }
+    if (!WINDOWED) {
+      this.raiseTimer = setInterval(() => {
+        for (const win of this.windows) if (!win.isDestroyed()) win.moveTop();
+      }, RAISE_EVERY_MS);
     }
   }
 
@@ -155,7 +167,7 @@ export class Overlay {
       win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
       // Students can't close or switch away from the lock screen with the keyboard.
       win.on('blur', () => {
-        if (isPrimary && !win.isDestroyed()) setTimeout(() => !win.isDestroyed() && win.focus(), 100);
+        if (isPrimary && !win.isDestroyed()) setTimeout(() => !win.isDestroyed() && takeFocus(win), 100);
       });
     }
     // Alt+F4 / Cmd+W do nothing; destroy() below bypasses this.
@@ -166,15 +178,29 @@ export class Overlay {
     win.webContents.on('will-navigate', (e) => e.preventDefault());
     win.once('ready-to-show', () => {
       win.showInactive();
-      if (isPrimary) win.focus();
+      if (!isPrimary) return;
+      if (WINDOWED) win.focus();
+      else takeFocus(win);
     });
     void win.loadFile(path.join(__dirname, 'overlay.html'));
     return win;
   }
 
   private destroyAll(): void {
+    if (this.raiseTimer) clearInterval(this.raiseTimer);
+    this.raiseTimer = null;
     for (const win of this.windows) if (!win.isDestroyed()) win.destroy();
     this.windows = [];
     this.primary = null;
   }
+}
+
+/**
+ * Brings the lock window to the front. On macOS the agent has to become the
+ * active app too: only then does kiosk mode hide the Dock and menu bar and
+ * turn off Cmd+Tab and Force Quit, and only then do keys reach the overlay.
+ */
+function takeFocus(win: BrowserWindow): void {
+  if (process.platform === 'darwin') app.focus({ steal: true });
+  win.focus();
 }
