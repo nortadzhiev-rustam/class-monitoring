@@ -40,6 +40,8 @@ const base = {
   // Log instead of opening the browser or restarting this computer.
   CM_LAUNCH_DRY_RUN: '1',
   CM_POWER_DRY_RUN: '1',
+  // Log which apps would close instead of closing this computer's apps.
+  CM_CLOSE_APPS_DRY_RUN: '1',
   CM_POWER_DELAY: '2',
   CM_WOL_PORT: '47899',
 };
@@ -434,6 +436,7 @@ await step('a blocked app is closed on the student', async () => {
   let exited = false;
   running.on('exit', () => (exited = true));
   await page.click('#apps');
+  await page.click('.menu button:has-text("Block apps")');
   await page.fill('#apps-list', 'cmblockme');
   await page.click('#apps-on');
   await waitFor(async () => exited, 15_000).catch(() => {
@@ -447,6 +450,7 @@ await step('a blocked app is closed on the student', async () => {
   await prompts.screenshot({ path: path.join(out, '15-app-blocked.png') });
   await prompts.click('.card.notice .btn');
   await page.click('#apps');
+  await page.click('.menu button:has-text("Block apps")');
   await page.click('#apps-off');
   await page.waitForSelector(`${card('student')} .pill:has-text("Apps blocked")`, { state: 'detached', timeout: 10_000 });
 });
@@ -461,6 +465,21 @@ await step('power controls warn the student first (dry run)', async () => {
   await prompts.screenshot({ path: path.join(out, '16-power-warning.png') });
   await waitFor(async () => studentLog().includes('[power] restart (dry run)'), 10_000);
   await prompts.waitForSelector('.card.power', { state: 'detached' });
+});
+
+await step('closing all apps warns the student first, then spares ClassMonitor (dry run)', async () => {
+  await page.click('#apps');
+  await page.click('.menu button:has-text("Close all apps")');
+  await page.click('#confirm-ok');
+  const prompts = pageOf(student, 'prompts.html');
+  await prompts.waitForSelector('.card.power:has-text("close your apps") .countdown', { timeout: 10_000 });
+  await prompts.waitForTimeout(400); // let the window grow to fit the card
+  await prompts.screenshot({ path: path.join(out, '18-close-apps-warning.png') });
+  let line = '';
+  await waitFor(async () => (line = /\[close-apps\] (.*) \(dry run\)/.exec(studentLog())?.[1] ?? '') !== '', 15_000);
+  if (/\b(Electron|ClassMonitor|Finder)\b/.test(line)) throw new Error(`would close ${line}`);
+  await prompts.waitForSelector('.card.power', { state: 'detached' });
+  return line.length > 60 ? `${line.slice(0, 60)}…` : line;
 });
 
 await step('the web filter bridge refuses programs without the secret', async () => {

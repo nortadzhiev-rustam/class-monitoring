@@ -140,7 +140,7 @@ $('#files').addEventListener('click', () =>
 );
 
 $('#open').addEventListener('click', () => control.openMenu($('#open'), targets.current()));
-$('#apps').addEventListener('click', () => control.blockApps(targets.current()));
+$('#apps').addEventListener('click', () => control.appsMenu($('#apps'), targets.current()));
 $('#web').addEventListener('click', () => control.webMenu($('#web'), targets.current()));
 $('#power').addEventListener('click', () => control.powerMenu($('#power'), targets.current()));
 

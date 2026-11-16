@@ -36,6 +36,7 @@ const api: TeacherApi = {
   openUrl: (target, url) => ipcRenderer.invoke('teacher:open-url', target, url),
   openApp: (target, name) => ipcRenderer.invoke('teacher:open-app', target, name),
   power: (target, action) => ipcRenderer.invoke('teacher:power', target, action),
+  closeApps: (target) => ipcRenderer.invoke('teacher:close-apps', target),
   setApps: (target, apps) => ipcRenderer.send('teacher:set-apps', target, apps),
   wake: (ids) => ipcRenderer.invoke('teacher:wake', ids),
   setWeb: (target, rules) => ipcRenderer.send('teacher:set-web', target, rules),

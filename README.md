@@ -38,7 +38,8 @@ A LAN classroom-management app in the spirit of NetSupport School: a **teacher c
 | Feature | How it works |
 | --- | --- |
 | Open website / app | Opens a link in the default browser or an app by name |
-| Block apps | Named apps (with `*` wildcards) are closed whenever they start |
+| Close all apps | **Apps ▾ → Close all apps** asks every open app to quit after a 15-second warning, the same way Cmd+Q or a window's ✕ would, so apps with unsaved work can ask the student first. Finder, File Explorer and ClassMonitor stay open |
+| Block apps | **Apps ▾ → Block apps**: named apps (with `*` wildcards) are closed whenever they start |
 | Websites | Block all websites in one go, or block-list / allow-list sites, in Chrome and Edge via the ClassMonitor Web Filter extension |
 | Power | Log off, restart or shut down after a 15-second warning; Wake-on-LAN for offline computers |
 
@@ -122,7 +123,7 @@ Website rules are applied by the **ClassMonitor Web Filter** extension, which ta
    - Chrome: `ExtensionInstallForcelist` = `<chrome id>;https://clients2.google.com/service/update2/crx` (Windows: `HKLM\Software\Policies\Google\Chrome\ExtensionInstallForcelist`; macOS: a `com.google.Chrome` configuration profile).
    - Edge: `ExtensionInstallForcelist` = `<edge id>;https://edge.microsoft.com/extensionwebstorebase/v1/crx` (Windows: `HKLM\Software\Policies\Microsoft\Edge\ExtensionInstallForcelist`; macOS: a `com.microsoft.Edge` profile).
 
-**Websites ▾ → Block all websites** stops every page from opening in Chrome and Edge (an allow-list with nothing on it); **Allow all websites** lifts it. It covers browsers only: other apps that use the internet keep working, so pair it with **Block apps** if needed.
+**Websites ▾ → Block all websites** stops every page from opening in Chrome and Edge (an allow-list with nothing on it); **Allow all websites** lifts it. It covers browsers only: other apps that use the internet keep working, so pair it with **Apps ▾ → Block apps** if needed.
 
 While rules are on, Firefox, Safari and other browsers the extension can't reach are closed (you can switch this off under **Choose sites…**, and Block all websites follows that choice). Cards say **Web filter missing** where Chrome or Edge is open without the extension.
 

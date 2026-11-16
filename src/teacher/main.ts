@@ -265,12 +265,14 @@ function registerIpc(): void {
     if (!APP_NAME.test(name) || name.includes('*')) throw new Error('Use the app\'s name, like Calculator or notepad.');
     return server.sendTo(asTarget(target), { type: 'open-app', name });
   });
+  // Students get a countdown to save their work before power actions and
+  // closing their apps; tests shorten it.
+  const warningDelay = () => Math.min(LIMITS.powerDelayMax, Number(process.env.CM_POWER_DELAY ?? 15));
   handle('teacher:power', (target: Target, action: PowerAction) => {
     if (!['logoff', 'restart', 'shutdown'].includes(action)) throw new Error('Unknown power action.');
-    // Students get a countdown to save their work; tests shorten it.
-    const delay = Math.min(LIMITS.powerDelayMax, Number(process.env.CM_POWER_DELAY ?? 15));
-    return server.sendTo(asTarget(target), { type: 'power', action, delay });
+    return server.sendTo(asTarget(target), { type: 'power', action, delay: warningDelay() });
   });
+  handle('teacher:close-apps', (target: Target) => server.sendTo(asTarget(target), { type: 'close-apps', delay: warningDelay() }));
   on('teacher:set-apps', (target: Target, apps: string[] | null) => {
     const list = Array.isArray(apps) ? [...new Set(apps.map((a) => clip(a, 60)).filter((a) => APP_NAME.test(a)))].slice(0, LIMITS.blockedApps) : [];
     server.setPolicy(asTarget(target), { apps: list.length ? list : null });

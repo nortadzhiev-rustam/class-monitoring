@@ -10,6 +10,7 @@ import { configureApp, shareScreenWithoutPicker } from '../shared/electron-setup
 import { LIMITS, type Platform, type Policy, type RtcSignal, type StudentInfo, type TeacherMessage } from '../shared/protocol';
 import { OTHER_BROWSERS } from '../shared/web-rules';
 import { setBlockedApps } from './app-blocker';
+import { scheduleCloseApps } from './close-apps';
 import { initChat, openChat, receiveChat, refreshChat, resetChat } from './chat';
 import { isManagedConfig, loadStudentConfig, type StudentConfig } from './config';
 import { TeacherLink } from './connection';
@@ -185,6 +186,9 @@ function onTeacherMessage(msg: TeacherMessage, payload: Buffer | undefined): voi
       break;
     case 'power':
       schedulePower(msg.action, msg.delay);
+      break;
+    case 'close-apps':
+      scheduleCloseApps(msg.delay);
       break;
     case 'file-start':
     case 'file-chunk':

@@ -163,6 +163,8 @@ export interface TeacherApi {
   openUrl(target: Target, url: string): Promise<number>;
   openApp(target: Target, name: string): Promise<number>;
   power(target: Target, action: PowerAction): Promise<number>;
+  /** Asks every open app on the targets to quit after a warning. */
+  closeApps(target: Target): Promise<number>;
   /** Blocks these apps for the target (null turns blocking off). */
   setApps(target: Target, apps: string[] | null): void;
   /** Wake-on-LAN for offline students; resolves to how many computers were sent a packet. */
