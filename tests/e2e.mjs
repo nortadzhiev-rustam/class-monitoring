@@ -209,12 +209,13 @@ await step('unlocking everyone removes the lock screen', async () => {
 await step('remote view streams the student screen', async () => {
   await page.hover('.card .screen');
   await page.click('.card [data-action="view"]');
-  await page.waitForFunction(() => document.querySelector('#viewer-video').videoWidth > 0, null, { timeout: 15_000 });
+  // The student's computer encodes its screen and sends it over the encrypted link; the console draws it.
+  await page.waitForFunction(() => Number(document.querySelector('#viewer-screen').dataset.frames) > 0, null, { timeout: 15_000 });
   // The student is told, on the toolbar.
   await toolbar().waitForSelector('.chip.viewing', { state: 'attached', timeout: 5000 });
   const size = await page.evaluate(() => {
-    const v = document.querySelector('#viewer-video');
-    return `${v.videoWidth}×${v.videoHeight}`;
+    const c = document.querySelector('#viewer-screen');
+    return `${c.width}×${c.height}${document.getElementById('stage-note').hidden ? '' : ', still pictures'}`;
   });
   await page.waitForTimeout(800);
   await page.screenshot({ path: path.join(out, '3-remote-view.png') });
@@ -266,7 +267,7 @@ await step(
     await page.click(`${card('student')} [data-action="view"]`);
     await page.waitForSelector('#viewer-screens:not([hidden]) button', { timeout: 10_000 });
     await page.click(`#viewer-screens button[data-display="${second.id}"]`);
-    await page.waitForFunction(() => document.querySelector('#viewer-video').videoWidth > 0, null, { timeout: 15_000 });
+    await page.waitForFunction(() => Number(document.querySelector('#viewer-screen').dataset.frames) > 0, null, { timeout: 15_000 });
     await page.click('#viewer-control');
     helperLog.length = 0;
     const box = await page.locator('#stage').boundingBox();
@@ -348,6 +349,53 @@ await step(
   },
   { soft: true },
 );
+
+await step("a student's screen can be shown to the class", async () => {
+  // This one sends still pictures, as a computer where live video can't start does.
+  const classmate = await launchStudent('classmate', { CM_VIEW_STILLS: '1' });
+  const frames = (overlay) => overlay.evaluate(() => Number(document.querySelector('#screen').dataset.frames ?? 0));
+  try {
+    await waitFor(async () => hasId('classmate'), 15_000);
+    await page.waitForSelector(`${card('classmate')}:not(.offline)`, { timeout: 20_000 });
+    // From the first student's remote view.
+    await page.hover(`${card('student')} .screen`);
+    await page.click(`${card('student')} [data-action="view"]`);
+    await page.waitForFunction(() => Number(document.querySelector('#viewer-screen').dataset.frames) > 0, null, { timeout: 15_000 });
+    await page.click('#viewer-exhibit');
+    await page.waitForSelector('#viewer-exhibit:has-text("Stop showing")');
+    let overlay = null;
+    await waitFor(async () => (overlay = await primaryOverlay(classmate)) !== null, 15_000);
+    await waitFor(async () => (await frames(overlay)) > 0, 15_000);
+    const presenter = await overlay.textContent('.badge .presenter-name');
+    if (overlayPages(student).length) throw new Error('the student whose screen it is got the overlay too');
+    await toolbar().waitForSelector('.chip:has-text("Shown to the class")', { state: 'attached' });
+    await overlay.screenshot({ path: path.join(out, '23-student-screen-on-classmate.png') });
+    // Closing the viewer keeps it on the class's screens; Stop ends it.
+    await page.click('#viewer-close');
+    const before = await frames(overlay);
+    await waitFor(async () => (await frames(overlay)) > before);
+    if (!(await page.textContent('#banner-text')).includes("'s screen")) throw new Error('the banner does not say whose screen is shown');
+    await page.click('#banner-stop');
+    await waitFor(async () => overlayPages(classmate).length === 0);
+    await toolbar().waitForSelector('.chip:has-text("Shown to the class")', { state: 'detached' });
+    // Remote view of a computer that can't start video falls back to still pictures, and says so.
+    await page.hover(`${card('classmate')} .screen`);
+    await page.click(`${card('classmate')} [data-action="view"]`);
+    await page.waitForFunction(() => Number(document.querySelector('#viewer-screen').dataset.frames) > 1, null, { timeout: 15_000 });
+    const note = await page.textContent('#stage-note');
+    if (!note.startsWith('Still pictures')) throw new Error(`no still-pictures note (${note})`);
+    await page.screenshot({ path: path.join(out, '24-remote-view-still-pictures.png') });
+    await page.click('#viewer-close');
+    return `shown as "${presenter}'s screen"; still pictures when video can't start`;
+  } finally {
+    // Leave the class as the following steps expect it.
+    await classmate.close();
+    await page.waitForSelector(`${card('classmate')}.offline`, { timeout: 15_000 }).catch(() => {});
+    await page.hover(`${card('classmate')} .screen`).catch(() => {});
+    await page.click(`${card('classmate')} [data-action="forget"]`).catch(() => {});
+    await page.waitForSelector(card('classmate'), { state: 'detached', timeout: 5000 }).catch(() => {});
+  }
+});
 
 await step('a message pops up on the student', async () => {
   await page.click('#message');
@@ -710,7 +758,10 @@ await step('dragging a card moves it to that place', async () => {
   // Onto the left half of the first card: the last one goes in front of it.
   await page.dragAndDrop(`.card[data-id="${last}"] footer`, `.card[data-id="${first}"] .screen`, { targetPosition: { x: 10, y: 40 } });
   const after = await cardOrder();
-  if (after[0] !== last || after.length !== before.length) throw new Error(`order is now ${after.join(', ')}`);
+  if (after[0] !== last || after.length !== before.length) {
+    const names = await page.$$eval('#grid .card', (els) => els.map((el) => `${el.querySelector('.name')?.textContent}${el.classList.contains('offline') ? ' (offline)' : ''}`));
+    throw new Error(`order was ${before.join(', ')}, is now ${after.join(', ')} [${names.join(' | ')}]`);
+  }
   await page.waitForSelector('#sort-name:not([hidden])', { timeout: 2000 });
   arranged = after;
   return `${after.length} cards`;

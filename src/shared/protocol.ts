@@ -6,7 +6,7 @@ import type { WebRules } from './web-rules';
 
 export const APP_ID = 'class-monitor';
 /** Teacher and students must match; bump on any incompatible message change. */
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 /** UDP port students listen on for teacher beacons. */
 export const DISCOVERY_PORT = 47800;
 /** TCP port the teacher console accepts WebSocket connections on. */
@@ -46,8 +46,10 @@ export interface StudentInfo {
 export interface Policy {
   /** Lock-screen message, or null when unlocked. */
   lock: string | null;
-  /** Teacher's screen-broadcast session the student should show, or null. */
+  /** Screen-broadcast session the student should show, or null. */
   broadcast: string | null;
+  /** Whose screen the broadcast is: a student's name, or null for the teacher's. */
+  presenter: string | null;
   /** The poll the student should be answering, or null. */
   poll: Poll | null;
   /** Attendance register the student should sign in to, or null. */
@@ -60,7 +62,7 @@ export interface Policy {
   web: WebRules | null;
 }
 
-export const OPEN_POLICY: Policy = { lock: null, broadcast: null, poll: null, register: null, collect: null, apps: null, web: null };
+export const OPEN_POLICY: Policy = { lock: null, broadcast: null, presenter: null, poll: null, register: null, collect: null, apps: null, web: null };
 
 /** The student's browser as seen through the web filter extension. */
 export interface WebStatus {
@@ -117,21 +119,18 @@ export type FileMessage =
   | { type: 'file-ack'; transferId: string; ok: boolean; error?: string };
 
 /**
- * One encoded picture of the teacher's screen ("Show my screen"). The screen is
- * encoded once and the same frames go to every student; a student can start
- * decoding at any keyframe. `codec` is a WebCodecs codec string; H.264 is Annex B,
- * so keyframes carry their own SPS/PPS.
+ * One encoded picture of a screen: the teacher's or a student's shown to the
+ * class, or a student's in remote view. A screen is encoded once and the same
+ * frames go to everyone watching; decoding can start at any keyframe. `codec`
+ * is a WebCodecs codec string (H.264 is Annex B, so keyframes carry their own
+ * SPS/PPS), or 'jpeg' for a still picture, which is always a keyframe.
  */
-export interface BroadcastFrameMeta {
+export interface FrameMeta {
   codec: string;
   key: boolean;
   /** Microseconds, as the encoder produced it. */
   timestamp: number;
 }
-
-export type RtcSignal =
-  | { kind: 'offer' | 'answer'; sdp: string }
-  | { kind: 'ice'; candidate: RTCIceCandidateInit | null };
 
 /**
  * Remote-control input. Pointer coordinates are normalised to 0..1 across the
@@ -147,14 +146,18 @@ export type TeacherMessage =
   | { type: 'welcome'; teacher: string; room: string }
   | { type: 'policy'; policy: Policy }
   | { type: 'thumb-config'; intervalMs: number; width: number }
-  /** `displayId` picks the monitor; the primary one when omitted. */
-  | { type: 'view-start'; sessionId: string; displayId?: string }
+  /** `displayId` picks the monitor; the primary one when omitted. `bitrate` caps the student's video. */
+  | { type: 'view-start'; sessionId: string; displayId?: string; bitrate?: number }
   | { type: 'view-stop'; sessionId: string }
+  /** The teacher needs a keyframe of this remote view (a decoding error, or the class just started watching it). */
+  | { type: 'view-keyframe'; sessionId: string }
+  | { type: 'view-bitrate'; sessionId: string; bitrate: number }
+  /** This student's screen is (or stops being) shown to the class. */
+  | { type: 'presenting'; on: boolean }
   | { type: 'control'; sessionId: string; enabled: boolean; teacherPlatform: Platform }
   | { type: 'input'; sessionId: string; events: InputEvent[] }
-  | { type: 'signal'; sessionId: string; signal: RtcSignal }
   /** Sent with the encoded frame as the payload. */
-  | ({ type: 'broadcast-frame'; sessionId: string } & BroadcastFrameMeta)
+  | ({ type: 'broadcast-frame'; sessionId: string } & FrameMeta)
   | { type: 'message'; id: string; text: string }
   | { type: 'chat'; id: string; text: string; at: number }
   /** The teacher has dealt with the student's raised hand. */
@@ -174,7 +177,10 @@ export type StudentMessage =
   | { type: 'thumb'; width: number; height: number }
   /** The student's screen is ready to show the broadcast; sent again after a decoding problem, to get a fresh keyframe. */
   | { type: 'broadcast-ready'; sessionId: string }
-  | { type: 'signal'; sessionId: string; signal: RtcSignal }
+  /** One frame of this student's screen for a remote view, with the frame as the payload. */
+  | ({ type: 'view-frame'; sessionId: string } & FrameMeta)
+  /** How the remote view is being sent: live video, or still pictures because video couldn't start (and why). */
+  | { type: 'view-mode'; sessionId: string; mode: 'video' | 'stills'; reason?: string }
   | { type: 'chat'; id: string; text: string; at: number }
   | { type: 'poll-answer'; pollId: string; choice: number }
   | { type: 'sign-in'; registerId: string; name: string }

@@ -1,15 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { BroadcastFrameMeta, RtcSignal } from '../shared/protocol';
+import type { FrameMeta } from '../shared/protocol';
 import type { ChatState, DiscoveredClass, OverlayState, PromptCard, SetupStatus, StudentApi, ToolbarState, ViewCommand } from './ipc';
 
 const api: StudentApi = {
-  signal: (sessionId, signal) => ipcRenderer.send('student:signal', sessionId, signal),
-  onSignal: (listener) => {
-    ipcRenderer.on('student:signal', (_e, sessionId: string, signal: RtcSignal) => listener(sessionId, signal));
-  },
   onViewCommand: (listener) => {
     ipcRenderer.on('student:view', (_e, command: ViewCommand) => listener(command));
   },
+  viewFrame: (sessionId, meta, data) => ipcRenderer.send('student:view-frame', sessionId, meta, data),
   viewError: (sessionId, message) => ipcRenderer.send('student:view-error', sessionId, message),
   overlayReady: () => ipcRenderer.send('student:overlay-ready'),
   onOverlayState: (listener) => {
@@ -17,7 +14,7 @@ const api: StudentApi = {
   },
   broadcastReady: (sessionId) => ipcRenderer.send('student:broadcast-ready', sessionId),
   onBroadcastFrame: (listener) => {
-    ipcRenderer.on('student:broadcast-frame', (_e, sessionId: string, meta: BroadcastFrameMeta, data: Uint8Array) => listener(sessionId, meta, data));
+    ipcRenderer.on('student:broadcast-frame', (_e, sessionId: string, meta: FrameMeta, data: Uint8Array) => listener(sessionId, meta, data));
   },
   setupInitial: () => ipcRenderer.invoke('student:setup-initial'),
   setupJoin: (details) => ipcRenderer.invoke('student:setup-join', details),

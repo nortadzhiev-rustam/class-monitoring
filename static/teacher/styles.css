@@ -423,7 +423,19 @@ body.darwin .viewer-bar { padding-left: 84px; }
 .control-hint { color: var(--accent); font-weight: 500; font-size: 12px; }
 
 .stage { flex: 1; position: relative; min-height: 0; outline: none; }
-.stage video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.stage-note {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  max-width: calc(100% - 24px);
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  font-size: 12px;
+}
+.stage-note[hidden] { display: none; }
 .stage.controlling { cursor: crosshair; box-shadow: inset 0 0 0 3px var(--accent); }
 .stage-status {
   position: absolute;

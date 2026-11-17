@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { BroadcastRelay, MAX_QUEUED_BYTES, type ViewerLink } from '../../src/teacher/broadcast-relay';
+import { FrameRelay, MAX_QUEUED_BYTES, type ViewerLink } from '../../src/shared/frame-relay';
 import type { TeacherMessage } from '../../src/shared/protocol';
 
 /** A fake student connection that records what it was sent. */
 function fakeLink() {
   const sent: Array<{ msg: TeacherMessage; payload: Buffer }> = [];
-  const link: ViewerLink & { queued: number; isOpen: boolean } = {
+  const link: ViewerLink<TeacherMessage> & { queued: number; isOpen: boolean } = {
     queued: 0,
     isOpen: true,
     send: (msg, payload) => void sent.push({ msg, payload }),
@@ -19,10 +19,11 @@ function fakeLink() {
 function setup(ids: string[]) {
   const links = new Map(ids.map((id) => [id, fakeLink()]));
   const events = { keyframes: 0, viewers: [] as number[] };
-  const relay = new BroadcastRelay((id) => links.get(id)?.link ?? null, {
-    keyframe: () => events.keyframes++,
-    viewers: (count) => events.viewers.push(count),
-  });
+  const relay = new FrameRelay<TeacherMessage>(
+    (id) => links.get(id)?.link ?? null,
+    { keyframe: () => events.keyframes++, viewers: (count) => events.viewers.push(count) },
+    (sessionId, meta) => ({ type: 'broadcast-frame', sessionId, ...meta }),
+  );
   return { relay, links, events };
 }
 

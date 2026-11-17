@@ -6,7 +6,7 @@
 
 import { app, BrowserWindow, screen } from 'electron';
 import path from 'node:path';
-import type { BroadcastFrameMeta } from '../shared/protocol';
+import type { FrameMeta } from '../shared/protocol';
 import { setInputLock } from './input-lock';
 import type { OverlayState } from './ipc';
 
@@ -34,6 +34,8 @@ export class Overlay {
   private raiseTimer: NodeJS.Timeout | null = null;
   private lockMessage: string | null = null;
   private broadcastSessionId: string | null = null;
+  /** A classmate whose screen is being shown, or null for the teacher's. */
+  private presenter: string | null = null;
   private teacher = 'your teacher';
   private rebuildTimer: NodeJS.Timeout | null = null;
 
@@ -64,8 +66,9 @@ export class Overlay {
     this.sync();
   }
 
-  startBroadcast(sessionId: string): void {
+  startBroadcast(sessionId: string, presenter: string | null = null): void {
     this.broadcastSessionId = sessionId;
+    this.presenter = presenter;
     this.sync();
   }
 
@@ -87,7 +90,7 @@ export class Overlay {
   }
 
   /** The teacher's screen, one encoded frame at a time, for the primary display's overlay to decode. */
-  sendFrame(sessionId: string, meta: BroadcastFrameMeta, data: Buffer): void {
+  sendFrame(sessionId: string, meta: FrameMeta, data: Buffer): void {
     const win = this.primary;
     if (sessionId !== this.broadcastSessionId || !win || win.isDestroyed() || win.webContents.isLoading()) return;
     win.webContents.send('student:broadcast-frame', sessionId, meta, data);
@@ -104,6 +107,7 @@ export class Overlay {
       message: this.lockMessage ?? '',
       teacher: this.teacher,
       sessionId: this.broadcastSessionId,
+      presenter: this.presenter ?? this.teacher,
       primary: win === this.primary,
     };
   }

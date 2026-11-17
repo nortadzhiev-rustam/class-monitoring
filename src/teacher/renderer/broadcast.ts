@@ -6,20 +6,10 @@
 import type { TeacherScreen } from '../ipc';
 import { $, api, toast } from './dom';
 import { showMenu } from './menu';
-import { ScreenEncoder } from './screen-encoder';
+import { ScreenEncoder } from '../../renderer-shared/screen-encoder';
+import { classBitrate } from '../../shared/frame-relay';
 import type { Resolved } from './targets';
 
-// Every student gets their own copy of the one stream, so the class shares a
-// network budget: up to 12 students get the full rate, a class of 30 about
-// 1 Mbps each, and the teacher's network link never carries more than ~30 Mbps.
-// (Screen content usually needs far less than the cap.)
-const CLASS_BUDGET = 30_000_000;
-const MAX_PER_STUDENT = 2_500_000;
-const MIN_PER_STUDENT = 500_000;
-
-/** Bits per second for each student when `watching` students share the budget. */
-export const perStudentBitrate = (watching: number) =>
-  Math.max(MIN_PER_STUDENT, Math.min(MAX_PER_STUDENT, Math.floor(CLASS_BUDGET / Math.max(1, watching))));
 
 interface Broadcast {
   sessionId: string;
@@ -34,6 +24,8 @@ interface Broadcast {
 const REBALANCE_MS = 1000;
 
 let broadcast: Broadcast | null = null;
+/** A student's screen being shown instead: from this remote-view session. */
+let exhibit: { name: string; label: string; sessionId: string } | null = null;
 let platform = '';
 let screens: TeacherScreen[] = [];
 /** Counts screen switches, so only the last of several quick clicks takes effect. */
@@ -43,7 +35,7 @@ let rebalanceTimer: number | null = null;
 export function init(teacherPlatform: string, teacherScreens: TeacherScreen[]): void {
   platform = teacherPlatform;
   screens = teacherScreens;
-  $('#banner-stop').addEventListener('click', stop);
+  $('#banner-stop').addEventListener('click', () => (exhibit ? stopStudent() : stop()));
   render();
 }
 
@@ -61,6 +53,7 @@ const screenName = (s: TeacherScreen, i: number) => `Screen ${i + 1}${s.label ? 
 /** The toolbar button: stops showing, or starts, first asking which screen when there are several. */
 export function toggle(anchor: HTMLElement, to: () => Resolved): void {
   if (broadcast) stop();
+  else if (exhibit) stopStudent();
   else if (screens.length < 2) void start(to());
   else showMenu(anchor, screens.map((s, i) => ({ label: screenName(s, i), action: () => void start(to(), s.id) })));
 }
@@ -86,13 +79,14 @@ async function capture(displayId: string | undefined): Promise<MediaStream | nul
 const stopTracks = (stream: MediaStream) => stream.getTracks().forEach((track) => track.stop());
 
 export async function start(to: Resolved, displayId?: string): Promise<void> {
+  stopStudent();
   const stream = await capture(displayId);
   const track = stream?.getVideoTracks()[0];
   if (!stream || !track) return;
   const sessionId = crypto.randomUUID();
   const encoder = new ScreenEncoder(
     track,
-    perStudentBitrate(1),
+    classBitrate(1),
     ({ data, ...meta }) => api.broadcastFrame(sessionId, meta, data),
     (message) => {
       toast(message);
@@ -141,7 +135,7 @@ export function viewers(count: number): void {
   if (rebalanceTimer !== null) clearTimeout(rebalanceTimer);
   rebalanceTimer = window.setTimeout(() => {
     rebalanceTimer = null;
-    broadcast?.encoder.setBitrate(perStudentBitrate(count));
+    broadcast?.encoder.setBitrate(classBitrate(count));
   }, REBALANCE_MS);
 }
 
@@ -154,16 +148,49 @@ export function stop(): void {
   render();
 }
 
+/** Shows a student's screen (their open remote view) to the target instead of the teacher's. */
+export function showStudent(to: Resolved, id: string, sessionId: string, name: string): void {
+  stop();
+  exhibit = { name, label: to.label, sessionId };
+  api.exhibitStart(to.target, id, sessionId, name);
+  render();
+}
+
+export function stopStudent(): void {
+  if (!exhibit) return;
+  exhibit = null;
+  api.exhibitStop();
+  render();
+}
+
+/** The console ended it (the student left). */
+export function studentShowEnded(): void {
+  exhibit = null;
+  render();
+}
+
+/** The remote-view session currently shown to the class, if any. */
+export const shownView = () => exhibit?.sessionId ?? null;
+
+let onRender: () => void = () => {};
+/** Called whenever what's shown to the class changes (the viewer's button follows). */
+export function onChange(listener: () => void): void {
+  onRender = listener;
+}
+
 function render(): void {
+  const showing = broadcast !== null || exhibit !== null;
   const button = $('#broadcast');
-  button.classList.toggle('primary', !broadcast);
-  button.classList.toggle('danger', !!broadcast);
+  button.classList.toggle('primary', !showing);
+  button.classList.toggle('danger', showing);
   // The ▾ tells the teacher they'll be asked which screen.
-  button.classList.toggle('pick-screen', !broadcast && screens.length > 1);
-  button.querySelector('span')!.textContent = broadcast ? 'Stop showing' : 'Show my screen';
-  $('#banner').hidden = !broadcast;
+  button.classList.toggle('pick-screen', !showing && screens.length > 1);
+  button.querySelector('span')!.textContent = showing ? 'Stop showing' : 'Show my screen';
+  $('#banner').hidden = !showing;
   if (broadcast) $('#banner-text').textContent = `Showing your screen to ${broadcast.label}`;
+  else if (exhibit) $('#banner-text').textContent = `Showing ${exhibit.name}'s screen to ${exhibit.label}`;
   renderScreenTabs();
+  onRender();
 }
 
 /** While showing, a tab per monitor switches what students see; hidden with one monitor. */

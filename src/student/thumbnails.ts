@@ -5,6 +5,7 @@
 import { desktopCapturer, nativeImage, screen, type NativeImage } from 'electron';
 import { blit, compositeLayout } from '../shared/displays';
 import { primaryScreenSource } from '../shared/electron-setup';
+import { sendingStills } from './session';
 import { send, state } from './state';
 
 let config = { intervalMs: 2000, width: 480 };
@@ -23,6 +24,8 @@ async function capture(): Promise<void> {
   const link = state.link;
   // Skip when the link is backed up (slow Wi-Fi) rather than queueing stale frames.
   if (!link?.connected || link.bufferedAmount > 1024 * 1024) return;
+  // A remote view is sending still pictures of this screen, which use the same capture: they take turns.
+  if (sendingStills()) return;
   const image = screen.getAllDisplays().length > 1 ? await composite() : (await primaryScreenSource(config.width))?.thumbnail;
   if (!image || image.isEmpty()) return;
   const jpeg = image.toJPEG(60);

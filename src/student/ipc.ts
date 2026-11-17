@@ -1,19 +1,25 @@
 // Types shared by the student's main process, preload and renderers
 // (the hidden capture window, the lock/broadcast overlays and the setup window).
 
-import type { BroadcastFrameMeta, PowerAction, RtcSignal } from '../shared/protocol';
+import type { FrameMeta, PowerAction } from '../shared/protocol';
 
 export interface OverlayState {
   mode: 'lock' | 'broadcast';
   message: string;
   teacher: string;
   sessionId: string | null;
-  /** Only the primary display's overlay plays the teacher's screen. */
+  /** Whose screen is shown: the teacher's name, or a classmate's. */
+  presenter: string;
+  /** Only the primary display's overlay plays the shown screen. */
   primary: boolean;
 }
 
-/** `sourceId` is the desktopCapturer id of the monitor to stream. */
-export type ViewCommand = { type: 'start'; sessionId: string; sourceId: string } | { type: 'stop'; sessionId: string };
+/** For the hidden capture window. `sourceId` is the desktopCapturer id of the monitor to stream. */
+export type ViewCommand =
+  | { type: 'start'; sessionId: string; sourceId: string; bitrate: number }
+  | { type: 'stop'; sessionId: string }
+  | { type: 'keyframe'; sessionId: string }
+  | { type: 'bitrate'; sessionId: string; bitrate: number };
 
 /** A teacher console heard on the network. */
 export interface DiscoveredClass {
@@ -60,6 +66,8 @@ export interface ToolbarState {
   /** The teacher is watching this screen right now / controlling this computer. */
   viewing: boolean;
   controlled: boolean;
+  /** This screen is being shown to the class. */
+  presenting: boolean;
   /** Website rules or blocked apps are on. */
   webLimited: boolean;
   appsBlocked: boolean;
@@ -82,11 +90,11 @@ export interface ChatState {
 }
 
 export interface StudentApi {
-  signal(sessionId: string, signal: RtcSignal): void;
-  onSignal(listener: (sessionId: string, signal: RtcSignal) => void): void;
-
   // Hidden capture window
   onViewCommand(listener: (command: ViewCommand) => void): void;
+  /** One encoded frame of this computer's screen for the teacher's remote view. */
+  viewFrame(sessionId: string, meta: FrameMeta, data: Uint8Array): void;
+  /** Live video couldn't start (or stopped working) for this remote view. */
   viewError(sessionId: string, message: string): void;
 
   // Overlay windows
@@ -94,7 +102,7 @@ export interface StudentApi {
   onOverlayState(listener: (state: OverlayState) => void): void;
   /** The overlay can show the broadcast; sent again after a decoding problem, for a fresh keyframe. */
   broadcastReady(sessionId: string): void;
-  onBroadcastFrame(listener: (sessionId: string, meta: BroadcastFrameMeta, data: Uint8Array) => void): void;
+  onBroadcastFrame(listener: (sessionId: string, meta: FrameMeta, data: Uint8Array) => void): void;
 
   // Setup window
   setupInitial(): Promise<{ room: string; classKey: string; teacherHost: string; platform: string }>;

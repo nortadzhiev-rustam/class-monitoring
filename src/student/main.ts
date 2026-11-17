@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { configureApp, shareScreenWithoutPicker } from '../shared/electron-setup';
-import { LIMITS, OPEN_POLICY, type Platform, type Policy, type RtcSignal, type StudentInfo, type TeacherMessage } from '../shared/protocol';
+import { LIMITS, OPEN_POLICY, type FrameMeta, type Platform, type Policy, type StudentInfo, type TeacherMessage } from '../shared/protocol';
 import { OTHER_BROWSERS } from '../shared/web-rules';
 import { setBlockedApps } from './app-blocker';
 import { scheduleCloseApps } from './close-apps';
@@ -95,6 +95,7 @@ function toolbarState(): ToolbarState | null {
     collect: policy.collect?.title ?? null,
     viewing: session.viewing(),
     controlled: session.controlled(),
+    presenting: session.isPresenting(),
     webLimited: policy.web !== null,
     appsBlocked: policy.apps !== null,
   };
@@ -111,7 +112,7 @@ function applyPolicy(next: Policy): void {
   policy = next;
   if (policy.lock !== null) overlay.lock(policy.lock || 'Your teacher has locked this screen.');
   else if (overlay.locked) overlay.unlock();
-  if (policy.broadcast) overlay.startBroadcast(policy.broadcast);
+  if (policy.broadcast) overlay.startBroadcast(policy.broadcast, typeof policy.presenter === 'string' ? policy.presenter.slice(0, LIMITS.name) : null);
   else if (overlay.broadcastSession) overlay.stopBroadcast();
   showPoll(policy.poll);
   void showRegister(policy.register);
@@ -171,7 +172,11 @@ function onTeacherMessage(msg: TeacherMessage, payload: Buffer | undefined): voi
       applyPolicy(msg.policy);
       break;
     case 'view-start':
-      void session.startView(msg.sessionId, typeof msg.displayId === 'string' ? msg.displayId : undefined);
+      void session.startView(
+        msg.sessionId,
+        typeof msg.displayId === 'string' ? msg.displayId : undefined,
+        typeof msg.bitrate === 'number' && Number.isFinite(msg.bitrate) ? msg.bitrate : undefined,
+      );
       break;
     case 'view-stop':
       session.endView(msg.sessionId);
@@ -182,8 +187,14 @@ function onTeacherMessage(msg: TeacherMessage, payload: Buffer | undefined): voi
     case 'input':
       session.inject(msg.sessionId, msg.events);
       break;
-    case 'signal':
-      if (session.owns(msg.sessionId)) session.relaySignal(msg.sessionId, msg.signal);
+    case 'view-keyframe':
+      session.requestKeyframe(msg.sessionId);
+      break;
+    case 'view-bitrate':
+      if (typeof msg.bitrate === 'number' && Number.isFinite(msg.bitrate)) session.setBitrate(msg.sessionId, msg.bitrate);
+      break;
+    case 'presenting':
+      session.setPresenting(msg.on === true);
       break;
     case 'broadcast-frame':
       if (payload && typeof msg.codec === 'string' && typeof msg.timestamp === 'number') {
@@ -274,13 +285,14 @@ function startLink(next: StudentConfig): void {
 function registerIpc(): void {
   const fromOverlay = (e: IpcMainEvent) => overlay.owns(e.sender);
 
-  ipcMain.on('student:signal', (e, sessionId: string, signal: RtcSignal) => {
-    if (session.isAgent(e.sender) && session.owns(sessionId)) send({ type: 'signal', sessionId, signal });
+  ipcMain.on('student:view-frame', (e, sessionId: string, meta: FrameMeta, data: Uint8Array) => {
+    if (!session.isAgent(e.sender) || !(data instanceof Uint8Array) || typeof meta?.codec !== 'string') return;
+    const frame = { codec: meta.codec.slice(0, 40), key: meta.key === true, timestamp: Number(meta.timestamp) || 0 };
+    session.viewFrame(String(sessionId), frame, Buffer.from(data.buffer, data.byteOffset, data.byteLength));
   });
+  // Live video failed on this computer: carry on with still pictures.
   ipcMain.on('student:view-error', (e, sessionId: string, message: string) => {
-    if (!session.isAgent(e.sender)) return;
-    send({ type: 'error', sessionId, message });
-    session.endView(sessionId);
+    if (session.isAgent(e.sender)) session.fallBack(String(sessionId), String(message));
   });
   ipcMain.on('student:overlay-ready', (e) => fromOverlay(e) && overlay.pushState(e.sender));
   ipcMain.on('student:broadcast-ready', (e, sessionId: string) => {

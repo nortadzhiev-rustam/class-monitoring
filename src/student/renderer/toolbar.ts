@@ -78,6 +78,7 @@ function isNews(s: ToolbarState, before: ToolbarState | null): boolean {
     (s.viewing && !before.viewing) ||
     (s.controlled && !before.controlled) ||
     (s.collect !== null && s.collect !== before.collect) ||
+    (s.presenting && !before.presenting) ||
     s.unread > before.unread
   );
 }
@@ -103,8 +104,9 @@ function render(s: ToolbarState): void {
 
   document.body.dataset.watch = s.controlled ? 'controlled' : s.viewing ? 'viewing' : '';
   const chips: HTMLElement[] = [];
+  if (s.presenting) chips.push(chip('viewing', 'i-screen', 'Shown to the class'));
   if (s.controlled) chips.push(chip('controlled', 'i-pointer', 'Teacher has control'));
-  else if (s.viewing) chips.push(chip('viewing', 'i-eye', 'Teacher is watching'));
+  else if (s.viewing && !s.presenting) chips.push(chip('viewing', 'i-eye', 'Teacher is watching'));
   if (s.webLimited) chips.push(chip('limits', 'i-globe', 'Websites limited'));
   if (s.appsBlocked) chips.push(chip('limits', 'i-block', 'Apps blocked'));
   byId('chips').replaceChildren(...chips);

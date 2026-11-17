@@ -1,7 +1,7 @@
 // Types shared by the teacher's main process, preload and renderer.
 
 import type { DisplayInfo } from '../shared/displays';
-import type { BroadcastFrameMeta, Collect, InputEvent, Platform, Policy, Poll, PowerAction, RtcSignal, StudentInfo, WebStatus } from '../shared/protocol';
+import type { FrameMeta, Collect, InputEvent, Platform, Policy, Poll, PowerAction, StudentInfo, WebStatus } from '../shared/protocol';
 import type { WebRules } from '../shared/web-rules';
 
 export interface StudentStatus {
@@ -98,7 +98,12 @@ export type TeacherEvent =
   | { type: 'status'; id: string; status: StudentStatus }
   | { type: 'policy'; id: string; policy: Policy }
   | { type: 'thumb'; id: string; jpeg: Uint8Array }
-  | { type: 'signal'; id: string; sessionId: string; signal: RtcSignal }
+  /** One frame of the student's screen in the open remote view. */
+  | { type: 'view-frame'; id: string; sessionId: string; meta: FrameMeta; data: Uint8Array }
+  /** The remote view is live video, or still pictures because video couldn't start on that computer (and why). */
+  | { type: 'view-mode'; id: string; sessionId: string; mode: 'video' | 'stills'; reason?: string }
+  /** Showing a student's screen to the class ended (they left, or the console reloaded). */
+  | { type: 'exhibit-ended' }
   /** A student needs a keyframe of the broadcast to start (or restart) showing it. */
   | { type: 'broadcast-keyframe' }
   /** How many students are showing the broadcast. */
@@ -139,8 +144,12 @@ export interface TeacherApi {
   broadcastStart(target: Target, sessionId: string): void;
   broadcastStop(): void;
   /** One encoded frame of the teacher's screen, for every student watching. */
-  broadcastFrame(sessionId: string, meta: BroadcastFrameMeta, data: Uint8Array): void;
-  signal(id: string, sessionId: string, signal: RtcSignal): void;
+  broadcastFrame(sessionId: string, meta: FrameMeta, data: Uint8Array): void;
+  /** The open remote view needs a keyframe (a decoding problem). */
+  viewKeyframe(id: string, sessionId: string): void;
+  /** Shows the student's screen from remote view `sessionId` to the target (never to that student). */
+  exhibitStart(target: Target, id: string, sessionId: string, name: string): void;
+  exhibitStop(): void;
   /** Pops up a message on the targets' screens; resolves to how many received it. */
   message(target: Target, text: string): Promise<number>;
   /** Sends a chat message; resolves to the message as sent (for the transcript). */
