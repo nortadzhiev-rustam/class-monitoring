@@ -82,7 +82,7 @@ function create(): void {
     focusable: false,
     skipTaskbar: true,
     alwaysOnTop: true,
-    title: 'ClassMonitor',
+    title: 'Дидбон',
     webPreferences: { preload, contextIsolation: true, sandbox: true },
   });
   win = w;

@@ -1,11 +1,14 @@
 import { app, desktopCapturer, screen, session, type DesktopCapturerSource } from 'electron';
 import path from 'node:path';
 
+/** The apps' names as people see them (Tajik: "lookout", teacher and pupil). */
+export const APP_NAMES = { Teacher: 'Дидбон Омӯзгор', Student: 'Дидбон Хонанда' } as const;
+
 /** Must run before `app.whenReady()`. */
 export function configureApp(role: 'Teacher' | 'Student'): void {
-  const name = `ClassMonitor ${role}`;
-  app.setName(name);
-  app.setPath('userData', process.env.CM_USER_DATA ?? path.join(app.getPath('appData'), name));
+  app.setName(APP_NAMES[role]);
+  // The settings folder keeps the original name, so computers keep their class, key and roster.
+  app.setPath('userData', process.env.CM_USER_DATA ?? path.join(app.getPath('appData'), `ClassMonitor ${role}`));
 }
 
 /** Files shipped next to the app: `resources/` when packaged, the repo root in development. */

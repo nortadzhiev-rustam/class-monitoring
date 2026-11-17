@@ -20,6 +20,7 @@ test('the OS shell and ClassMonitor itself are never blocked', () => {
   assert.equal(blockedBy('C:\\Windows\\explorer.exe', ['*']), null);
   assert.equal(blockedBy('/System/Library/CoreServices/Finder.app/Contents/MacOS/Finder', ['finder']), null);
   assert.equal(blockedBy('/Applications/ClassMonitor Student.app/Contents/MacOS/ClassMonitor Student', ['*']), null);
+  assert.equal(blockedBy('/Applications/Дидбон Хонанда.app/Contents/MacOS/Дидбон Хонанда', ['*']), null);
   assert.equal(blockedBy('/Applications/Minecraft.app/Contents/MacOS/launcher', ['*']), '*');
 });
 

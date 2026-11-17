@@ -586,7 +586,7 @@ await step('closing all apps warns the student first, then spares ClassMonitor (
   await prompts.screenshot({ path: path.join(out, '18-close-apps-warning.png') });
   let line = '';
   await waitFor(async () => (line = /\[close-apps\] (.*) \(dry run\)/.exec(studentLog())?.[1] ?? '') !== '', 15_000);
-  if (/\b(Electron|ClassMonitor|Finder)\b/.test(line)) throw new Error(`would close ${line}`);
+  if (/\b(Electron|ClassMonitor|Finder)\b|Дидбон/.test(line)) throw new Error(`would close ${line}`);
   await prompts.waitForSelector('.card.power', { state: 'detached' });
   return line.length > 60 ? `${line.slice(0, 60)}…` : line;
 });

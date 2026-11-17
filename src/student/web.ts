@@ -175,7 +175,7 @@ export function registerNativeHost(userData: string, extensionIds: string[]): vo
   const manifest = JSON.stringify(
     {
       name: NATIVE_HOST,
-      description: 'ClassMonitor Student (bridge for the web filter extension)',
+      description: 'Дидбон Хонанда (bridge for the web filter extension)',
       path: app.isPackaged ? process.execPath : devLauncher(userData),
       type: 'stdio',
       allowed_origins: ids.map((id) => `chrome-extension://${id}/`),

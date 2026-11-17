@@ -69,7 +69,7 @@ async function capture(displayId: string | undefined): Promise<MediaStream | nul
   } catch (err) {
     toast(
       platform === 'darwin'
-        ? 'Could not capture your screen. Allow Screen Recording for ClassMonitor Teacher in System Settings → Privacy & Security, then restart it.'
+        ? 'Could not capture your screen. Allow Screen Recording for Дидбон Омӯзгор in System Settings → Privacy & Security, then restart it.'
         : `Could not capture your screen: ${(err as Error).message}`,
     );
     return null;

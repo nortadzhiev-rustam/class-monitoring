@@ -262,7 +262,7 @@ api.onEvent((event: TeacherEvent) => {
     case 'version-mismatch':
       if (versionWarned.has(event.address)) break;
       versionWarned.add(event.address);
-      toast(`The computer at ${event.address} runs a different version of ClassMonitor. Update it so both match.`);
+      toast(`The computer at ${event.address} runs a different version of Дидбон. Update it so both match.`);
       break;
   }
 });
