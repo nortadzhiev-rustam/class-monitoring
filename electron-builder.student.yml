@@ -18,6 +18,8 @@ mac:
   icon: build/icon-student.png
   target: pkg
   artifactName: Didbon-Student-${version}-${arch}.${ext}
+  # Lets the signed (hardened) app use AppleScript: browsers for website rules, power controls.
+  entitlements: build/entitlements.student.mac.plist
   extendInfo:
     # Menu-bar agent: no Dock icon.
     LSUIElement: true
