@@ -6,10 +6,10 @@ import { orderDisplays } from '../shared/displays';
 import { configureApp, shareScreenWithoutPicker } from '../shared/electron-setup';
 import { pickFiles, pickSavePath } from '../shared/native-dialogs';
 import { randomUUID } from 'node:crypto';
-import { APP_NAME, CONTROL_PORT, LIMITS, type BroadcastFrameMeta, type InputEvent, type Platform, type Poll, type PowerAction, type RtcSignal } from '../shared/protocol';
+import { classBitrate, FrameRelay } from '../shared/frame-relay';
+import { APP_NAME, CONTROL_PORT, LIMITS, type FrameMeta, type InputEvent, type Platform, type Poll, type PowerAction, type TeacherMessage } from '../shared/protocol';
 import { generateClassKey } from '../shared/secure-channel';
 import { cleanRules, type WebRules } from '../shared/web-rules';
-import { BroadcastRelay } from './broadcast-relay';
 import { toCsv } from './csv';
 import { TeacherFiles } from './files';
 import type { ChatMessage, Group, Target, TeacherEvent, TeacherScreen, TeacherSettings, TeacherState } from './ipc';
@@ -25,8 +25,12 @@ let win: BrowserWindow | null = null;
 let server: ClassServer;
 let roster: Roster;
 let files: TeacherFiles;
-/** Sends "Show my screen" frames, encoded once in the window, to every student watching. */
-let relay: BroadcastRelay;
+/** Sends the screen shown to the class (the teacher's, encoded once in the window, or a student's) to every student watching. */
+let relay: FrameRelay<TeacherMessage>;
+/** A student's screen being shown to the class: theirs, from this remote-view session, as this broadcast session. */
+let exhibit: { id: string; viewSession: string; broadcastSession: string } | null = null;
+/** Remote view's bit rate when only the teacher is watching. */
+const VIEW_BITRATE = 4_000_000;
 /** Remote views the window has open (session id -> student id), to close if the window crashes. */
 const viewSessions = new Map<string, string>();
 /** Open while the "not responding" prompt is up; aborting it closes the prompt. */
@@ -111,6 +115,7 @@ function setControlling(enabled: boolean): void {
  * aren't left on a frozen broadcast or under remote control nobody can release.
  */
 function endWindowSessions(): void {
+  endExhibit();
   if (relay.session) {
     relay.stop();
     server.clearPolicy('broadcast');
@@ -118,6 +123,20 @@ function endWindowSessions(): void {
   for (const [sessionId, id] of viewSessions) server.send(id, { type: 'view-stop', sessionId });
   viewSessions.clear();
   setControlling(false);
+}
+
+/** Ends showing a student's screen to the class; its remote view ends too unless the viewer is still open. */
+function endExhibit(): void {
+  if (!exhibit) return;
+  const { id, viewSession } = exhibit;
+  exhibit = null;
+  relay.stop();
+  server.clearPolicy('broadcast');
+  server.clearPolicy('presenter');
+  server.send(id, { type: 'presenting', on: false });
+  if (viewSessions.has(viewSession)) server.send(id, { type: 'view-bitrate', sessionId: viewSession, bitrate: VIEW_BITRATE });
+  else server.send(id, { type: 'view-stop', sessionId: viewSession });
+  emit({ type: 'exhibit-ended' });
 }
 
 function reloadWindow(): void {
@@ -212,12 +231,28 @@ function registerIpc(): void {
   on('teacher:unlock', (target: Target) => server.setPolicy(asTarget(target), { lock: null }));
   on('teacher:view-start', (id: string, sessionId: string, displayId?: string) => {
     viewSessions.set(String(sessionId), String(id));
-    server.send(id, { type: 'view-start', sessionId, ...(typeof displayId === 'string' ? { displayId: displayId.slice(0, 32) } : {}) });
+    server.send(id, { type: 'view-start', sessionId, bitrate: VIEW_BITRATE, ...(typeof displayId === 'string' ? { displayId: displayId.slice(0, 32) } : {}) });
   });
   on('teacher:view-stop', (id: string, sessionId: string) => {
     viewSessions.delete(String(sessionId));
+    // Still shown to the class: it keeps streaming until that stops.
+    if (exhibit?.viewSession === sessionId) return;
     server.send(id, { type: 'view-stop', sessionId });
   });
+  on('teacher:view-keyframe', (id: string, sessionId: string) => server.send(id, { type: 'view-keyframe', sessionId: String(sessionId) }));
+  on('teacher:exhibit-start', (target: Target, id: string, sessionId: string, name: string) => {
+    if (viewSessions.get(String(sessionId)) !== id) return;
+    endExhibit();
+    relay.stop();
+    server.clearPolicy('broadcast');
+    const broadcastSession = randomUUID();
+    exhibit = { id, viewSession: String(sessionId), broadcastSession };
+    relay.start(broadcastSession);
+    server.send(id, { type: 'presenting', on: true });
+    // Everyone in the target sees it except the student whose screen it is.
+    server.setPolicy(asTarget(target), { broadcast: broadcastSession, presenter: clip(name, LIMITS.name) || 'A student' }, [id]);
+  });
+  on('teacher:exhibit-stop', endExhibit);
   on('teacher:control', (id: string, sessionId: string, enabled: boolean) => {
     setControlling(enabled);
     server.send(id, { type: 'control', sessionId, enabled, teacherPlatform: process.platform as Platform });
@@ -229,6 +264,7 @@ function registerIpc(): void {
     shareDisplay = typeof displayId === 'string' ? displayId.slice(0, 32) : undefined;
   });
   on('teacher:broadcast-start', (target: Target, sessionId: string) => {
+    endExhibit();
     server.clearPolicy('broadcast');
     relay.start(String(sessionId));
     server.setPolicy(asTarget(target), { broadcast: String(sessionId) });
@@ -237,7 +273,7 @@ function registerIpc(): void {
     relay.stop();
     server.clearPolicy('broadcast');
   });
-  on('teacher:broadcast-frame', (sessionId: string, meta: BroadcastFrameMeta, data: Uint8Array) => {
+  on('teacher:broadcast-frame', (sessionId: string, meta: FrameMeta, data: Uint8Array) => {
     if (typeof sessionId !== 'string' || !(data instanceof Uint8Array) || typeof meta?.codec !== 'string') return;
     const frame = { codec: meta.codec.slice(0, 40), key: meta.key === true, timestamp: Number(meta.timestamp) || 0 };
     relay.frame(sessionId, frame, Buffer.from(data.buffer, data.byteOffset, data.byteLength));
@@ -363,9 +399,6 @@ function registerIpc(): void {
     });
     notice.show();
   });
-  on('teacher:signal', (id: string, sessionId: string, signal: RtcSignal) =>
-    server.send(id, { type: 'signal', sessionId, signal }),
-  );
 }
 
 app.on('second-instance', () => {
@@ -382,10 +415,18 @@ app.whenReady().then(async () => {
   screen.on('display-metrics-changed', screensChanged);
   roster = new Roster(path.join(app.getPath('userData'), 'roster.json'));
   server = new ClassServer(loadConfig());
-  relay = new BroadcastRelay((id) => server.link(id), {
-    keyframe: () => emit({ type: 'broadcast-keyframe' }),
-    viewers: (count) => emit({ type: 'broadcast-viewers', count }),
-  });
+  relay = new FrameRelay<TeacherMessage>(
+    (id) => server.link(id),
+    {
+      // A student's screen comes from their computer: ask it. The teacher's comes from the window.
+      keyframe: () => (exhibit ? server.send(exhibit.id, { type: 'view-keyframe', sessionId: exhibit.viewSession }) : emit({ type: 'broadcast-keyframe' })),
+      viewers: (count) =>
+        exhibit
+          ? server.send(exhibit.id, { type: 'view-bitrate', sessionId: exhibit.viewSession, bitrate: Math.min(VIEW_BITRATE, classBitrate(count)) })
+          : emit({ type: 'broadcast-viewers', count }),
+    },
+    (sessionId, meta) => ({ type: 'broadcast-frame', sessionId, ...meta }),
+  );
   // Chromium restarts a crashed graphics process by itself; the screen encoder starts over (see screen-encoder.ts).
   app.on('child-process-gone', (_e, details) => console.warn(`[teacher] ${details.type} process ${details.reason} (exit code ${details.exitCode})`));
   server.on('joined', (student) => emit({ type: 'joined', student, entry: roster.seen(student.info, student.address) }));
@@ -394,6 +435,7 @@ app.whenReady().then(async () => {
     return entry?.name || entry?.hostname || id;
   });
   server.on('left', (id) => {
+    if (exhibit?.id === id) endExhibit();
     relay.left(id);
     for (const [sessionId, student] of viewSessions) if (student === id) viewSessions.delete(sessionId);
     roster.left(id);
@@ -414,7 +456,11 @@ app.whenReady().then(async () => {
   server.on('poll-answer', (id, pollId, choice) => emit({ type: 'poll-answer', id, pollId, choice }));
   server.on('status', (id, status) => emit({ type: 'status', id, status }));
   server.on('thumb', (id, jpeg) => emit({ type: 'thumb', id, jpeg }));
-  server.on('signal', (id, sessionId, signal) => emit({ type: 'signal', id, sessionId, signal }));
+  server.on('view-frame', (id, sessionId, meta, payload) => {
+    if (viewSessions.get(sessionId) === id) emit({ type: 'view-frame', id, sessionId, meta, data: payload });
+    if (exhibit?.id === id && exhibit.viewSession === sessionId) relay.frame(exhibit.broadcastSession, meta, payload);
+  });
+  server.on('view-mode', (id, sessionId, mode, reason) => emit({ type: 'view-mode', id, sessionId, mode, ...(reason ? { reason } : {}) }));
   server.on('broadcast-ready', (id, sessionId) => relay.ready(id, sessionId));
   server.on('student-error', (id, sessionId, message) => emit({ type: 'student-error', id, sessionId, message }));
 

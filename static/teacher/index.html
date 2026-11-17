@@ -231,12 +231,14 @@
       <div class="screens" id="viewer-screens" role="tablist" aria-label="Student's screens" hidden></div>
       <div class="spacer"></div>
       <span class="control-hint" id="control-hint" hidden>Your mouse and keyboard control this computer</span>
+      <button class="btn" id="viewer-exhibit" type="button" title="Show this student's screen to the class"><svg class="icon"><use href="#i-screen"/></svg><span>Show to class</span></button>
       <button class="btn" id="viewer-lock" type="button"><svg class="icon"><use href="#i-lock"/></svg><span>Lock</span></button>
       <button class="btn primary" id="viewer-control" type="button"><svg class="icon"><use href="#i-pointer"/></svg><span>Take control</span></button>
     </header>
     <div class="stage" id="stage">
-      <video id="viewer-video" autoplay muted playsinline></video>
+      <canvas id="viewer-screen"></canvas>
       <div class="stage-status" id="stage-status">Connecting…</div>
+      <div class="stage-note" id="stage-note" hidden></div>
     </div>
   </div>
 

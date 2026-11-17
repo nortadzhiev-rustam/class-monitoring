@@ -6,9 +6,6 @@ export function configureApp(role: 'Teacher' | 'Student'): void {
   const name = `ClassMonitor ${role}`;
   app.setName(name);
   app.setPath('userData', process.env.CM_USER_DATA ?? path.join(app.getPath('appData'), name));
-  // WebRTC on a LAN: expose real host IPs instead of mDNS ".local" names, which
-  // school networks often can't resolve because multicast is filtered.
-  app.commandLine.appendSwitch('disable-features', 'WebRtcHideLocalIpsWithMdns');
 }
 
 /** Files shipped next to the app: `resources/` when packaged, the repo root in development. */

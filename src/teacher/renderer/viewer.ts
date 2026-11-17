@@ -1,8 +1,11 @@
-// Full-size remote view of one student, with optional remote control.
+// Full-size remote view of one student, with optional remote control. The
+// student's computer encodes its screen and sends it over the encrypted link;
+// it's drawn here on a canvas (live video, or still pictures if video couldn't
+// start on that computer). From here the teacher can show it to the class.
 
-import { Peer } from '../../renderer-shared/peer';
+import { ScreenDecoder } from '../../renderer-shared/screen-decoder';
 import { orderDisplays } from '../../shared/displays';
-import type { InputEvent, RtcSignal } from '../../shared/protocol';
+import type { FrameMeta, InputEvent } from '../../shared/protocol';
 import { $, api, OS_LABEL } from './dom';
 import * as store from './store';
 import type { Student } from './store';
@@ -12,25 +15,40 @@ interface Viewer {
   sessionId: string;
   /** The student's monitor being shown; undefined means their main one. */
   displayId: string | undefined;
-  peer: Peer;
+  decoder: ScreenDecoder;
+  waitTimer: number;
   control: boolean;
   buttons: Set<number>;
   keys: Set<string>;
 }
 
+/** No picture by then: say so, rather than "Connecting…" for ever. */
+const WAIT_MS = 15_000;
+
 let viewer: Viewer | null = null;
 let onToggleLock: (s: Student) => void = () => {};
+let onToggleExhibit: (s: Student, sessionId: string) => void = () => {};
+let exhibiting: (sessionId: string) => boolean = () => false;
 /** Dialogs that, while open, keep keystrokes in the console instead of the student. */
 let dialogOpen: () => boolean = () => false;
 
 const viewerEl = $('#viewer');
 const stage = $('#stage');
-const video = $<HTMLVideoElement>('#viewer-video');
+const canvas = $<HTMLCanvasElement>('#viewer-screen');
 const stageStatus = $('#stage-status');
+const stageNote = $('#stage-note');
 
-export function init(options: { toggleLock: (s: Student) => void; dialogOpen: () => boolean }): void {
+export function init(options: {
+  toggleLock: (s: Student) => void;
+  dialogOpen: () => boolean;
+  /** Shows this remote view to the class, or stops showing it. */
+  toggleExhibit: (s: Student, sessionId: string) => void;
+  exhibiting: (sessionId: string) => boolean;
+}): void {
   onToggleLock = options.toggleLock;
   dialogOpen = options.dialogOpen;
+  onToggleExhibit = options.toggleExhibit;
+  exhibiting = options.exhibiting;
   store.onChange((id) => {
     if (!viewer || (id !== null && id !== viewer.id)) return;
     renderStatus();
@@ -44,21 +62,25 @@ export function open(s: Student, control: boolean, displayId?: string): void {
   close();
   const id = s.id;
   const sessionId = crypto.randomUUID();
-  const peer = new Peer((signal) => api.signal(id, sessionId, signal));
-  viewer = { id, sessionId, displayId, peer, control: false, buttons: new Set(), keys: new Set() };
-
-  peer.pc.ontrack = (e) => {
-    video.srcObject = e.streams[0] ?? new MediaStream([e.track]);
-  };
-  peer.pc.onconnectionstatechange = () => {
-    const st = peer.pc.connectionState;
-    if (st === 'failed') stageStatus.textContent = 'Connection failed. Close and try again.';
-    else if (st === 'disconnected') stageStatus.textContent = 'Reconnecting…';
-    else if (st === 'connected') stageStatus.textContent = '';
-  };
-  video.onplaying = () => (stageStatus.textContent = '');
+  const ctx = canvas.getContext('2d');
+  ctx?.clearRect(0, 0, canvas.width, canvas.height);
+  delete canvas.dataset.frames;
+  const decoder = new ScreenDecoder(canvas, {
+    needKeyframe: () => api.viewKeyframe(id, sessionId),
+    shown: (count) => {
+      if (count === 1 && viewer?.sessionId === sessionId) stageStatus.textContent = '';
+    },
+    failed: () => (stageStatus.textContent = "This computer can't show the student's screen. Close and try again."),
+  });
+  const waitTimer = window.setTimeout(() => {
+    if (viewer?.sessionId === sessionId && !decoder.frames) {
+      stageStatus.textContent = `Still waiting for ${store.displayName(s)}'s screen. Their computer may be busy, asleep or on an older version of ClassMonitor.`;
+    }
+  }, WAIT_MS);
+  viewer = { id, sessionId, displayId, decoder, waitTimer, control: false, buttons: new Set(), keys: new Set() };
 
   stageStatus.textContent = 'Connecting…';
+  stageNote.hidden = true;
   $('#viewer-name').textContent = store.displayName(s);
   $('#viewer-meta').textContent = `${s.username} · ${OS_LABEL[s.platform] ?? s.platform} · ${s.address}`;
   renderStatus();
@@ -101,17 +123,30 @@ export function close(): void {
   if (!viewer) return;
   setControl(false);
   api.viewStop(viewer.id, viewer.sessionId);
-  viewer.peer.close();
+  viewer.decoder.close();
+  clearTimeout(viewer.waitTimer);
   viewer = null;
-  video.srcObject = null;
   viewerEl.hidden = true;
 }
 
-/** Returns true if the signal belonged to the open viewer. */
-export function handleSignal(sessionId: string, signal: RtcSignal): boolean {
-  if (viewer?.sessionId !== sessionId) return false;
-  viewer.peer.handle(signal);
-  return true;
+/** A frame of the student's screen. */
+export function handleFrame(sessionId: string, meta: FrameMeta, data: Uint8Array): void {
+  if (viewer?.sessionId === sessionId) viewer.decoder.push(meta, data);
+}
+
+/** The student's computer says how it sends its screen. */
+export function setMode(sessionId: string, mode: 'video' | 'stills', reason?: string): void {
+  if (viewer?.sessionId !== sessionId) return;
+  stageNote.hidden = mode === 'video';
+  stageNote.textContent = mode === 'stills' ? `Still pictures: live video couldn't start on this computer${reason ? ` (${reason})` : ''}.` : '';
+}
+
+/** Showing to the class started or stopped: the button follows. */
+export function renderExhibit(): void {
+  const showing = viewer !== null && exhibiting(viewer.sessionId);
+  const button = $('#viewer-exhibit');
+  button.querySelector('span')!.textContent = showing ? 'Stop showing' : 'Show to class';
+  button.classList.toggle('danger', showing);
 }
 
 export function studentLeft(id: string): void {
@@ -139,6 +174,7 @@ function setControl(enabled: boolean): void {
 function renderStatus(): void {
   const s = viewer && store.get(viewer.id);
   if (!s) return;
+  renderExhibit();
   const site = s.web?.url ? ` · ${s.web.url}` : '';
   $('#viewer-meta').textContent = `${s.username} · ${OS_LABEL[s.platform] ?? s.platform} · ${s.address}${site}`;
   const locked = s.policy.lock !== null;
@@ -148,6 +184,10 @@ function renderStatus(): void {
 }
 
 $('#viewer-close').addEventListener('click', close);
+$('#viewer-exhibit').addEventListener('click', () => {
+  const s = viewer && store.get(viewer.id);
+  if (s && viewer) onToggleExhibit(s, viewer.sessionId);
+});
 $('#viewer-control').addEventListener('click', () => setControl(!viewer?.control));
 $('#viewer-lock').addEventListener('click', () => {
   const s = viewer && store.get(viewer.id);
@@ -197,12 +237,13 @@ for (const type of ['keydown', 'keyup'] as const) {
 // Switching away mid-keystroke must not leave keys or buttons stuck down on the student.
 window.addEventListener('blur', () => releaseHeld());
 
-/** Maps a pointer position to 0..1 within the letterboxed video picture. */
+/** Maps a pointer position to 0..1 within the letterboxed picture. */
 function videoPoint(e: MouseEvent): { x: number; y: number } | null {
-  const vw = video.videoWidth;
-  const vh = video.videoHeight;
+  if (!viewer?.decoder.frames) return null;
+  const vw = canvas.width;
+  const vh = canvas.height;
   if (!vw || !vh) return null;
-  const rect = video.getBoundingClientRect();
+  const rect = canvas.getBoundingClientRect();
   const scale = Math.min(rect.width / vw, rect.height / vh);
   const left = rect.left + (rect.width - vw * scale) / 2;
   const top = rect.top + (rect.height - vh * scale) / 2;

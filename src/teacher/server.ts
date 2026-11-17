@@ -14,9 +14,9 @@ import {
   PROTOCOL_VERSION,
   type Beacon,
   type FileMessage,
+  type FrameMeta,
   type Platform,
   type Policy,
-  type RtcSignal,
   type StudentInfo,
   type StudentMessage,
   type TeacherMessage,
@@ -24,7 +24,7 @@ import {
 } from '../shared/protocol';
 import type { FileLink } from '../shared/file-transfer';
 import { acceptStudent, CLOSE_REPLACED, deriveClassKey, type SecureChannel } from '../shared/secure-channel';
-import type { ViewerLink } from './broadcast-relay';
+import type { ViewerLink } from '../shared/frame-relay';
 import type { StudentStatus, StudentSummary, Target, TeacherSettings } from './ipc';
 import { PolicyTable } from './policy';
 
@@ -45,7 +45,10 @@ export interface ServerEvents {
   left: [string];
   status: [string, StudentStatus];
   thumb: [string, Buffer];
-  signal: [string, string, RtcSignal];
+  /** One frame of a student's screen for a remote view: student, session, frame, picture. */
+  'view-frame': [string, string, FrameMeta, Buffer];
+  /** How a remote view is sent: live video, or still pictures (and why). */
+  'view-mode': [string, string, 'video' | 'stills', string | undefined];
   'broadcast-ready': [string, string];
   'student-error': [string, string | undefined, string];
   policy: [string, Policy];
@@ -119,10 +122,13 @@ export class ClassServer extends EventEmitter<ServerEvents> {
     this.students.get(id)?.channel.send(msg);
   }
 
-  /** Changes settings for the target and pushes the new policy to those online. */
-  setPolicy(target: Target, patch: Partial<Policy>): void {
+  /** Changes settings for the target (except `exclude`) and pushes the new policy to those online. */
+  setPolicy(target: Target, patch: Partial<Policy>, exclude: string[] = []): void {
     // "Everyone" includes students who connected after the console built the target.
-    const ids = target.everyone ? [...new Set([...target.ids, ...this.students.keys()])] : target.ids;
+    const all = target.everyone ? [...new Set([...target.ids, ...this.students.keys()])] : target.ids;
+    const ids = all.filter((id) => !exclude.includes(id));
+    // Excluded students keep their own copy of today's policy, so a class-wide change passes them by.
+    if (exclude.length) this.policies.apply({ ids: exclude, everyone: false }, {});
     this.pushPolicy(this.policies.apply({ ids, everyone: target.everyone }, patch));
   }
 
@@ -141,7 +147,7 @@ export class ClassServer extends EventEmitter<ServerEvents> {
   }
 
   /** A sending handle for one connected student (file transfers, broadcast frames), with its backlog for pacing. */
-  link(id: string): (FileLink & ViewerLink) | null {
+  link(id: string): (FileLink & ViewerLink<TeacherMessage>) | null {
     const student = this.students.get(id);
     if (!student) return null;
     const { channel } = student;
@@ -300,8 +306,16 @@ export class ClassServer extends EventEmitter<ServerEvents> {
       case 'thumb':
         if (payload) this.emit('thumb', id, payload);
         break;
-      case 'signal':
-        this.emit('signal', id, msg.sessionId, msg.signal);
+      case 'view-frame':
+        if (payload && typeof msg.sessionId === 'string' && typeof msg.codec === 'string') {
+          const meta = { codec: msg.codec.slice(0, 40), key: msg.key === true, timestamp: Number(msg.timestamp) || 0 };
+          this.emit('view-frame', id, msg.sessionId, meta, payload);
+        }
+        break;
+      case 'view-mode':
+        if (typeof msg.sessionId === 'string' && (msg.mode === 'video' || msg.mode === 'stills')) {
+          this.emit('view-mode', id, msg.sessionId, msg.mode, typeof msg.reason === 'string' ? msg.reason.slice(0, 200) : undefined);
+        }
         break;
       case 'broadcast-ready':
         if (msg.sessionId === this.policies.get(id).broadcast) this.emit('broadcast-ready', id, msg.sessionId);

@@ -1,23 +1,23 @@
-// Encodes the captured screen once, with WebCodecs, for every student watching
-// (the main process sends each frame on to them; see broadcast-relay.ts).
+// Encodes a captured screen once, with WebCodecs, for everyone watching it (the
+// main process sends each frame on; see frame-relay.ts). The console uses it
+// for the teacher's screen; a student's computer for its screen in remote view.
 //
 // H.264 is preferred because the graphics chip encodes it (VideoToolbox on Macs,
 // Media Foundation on Windows), leaving the CPU free; VP8 in software is the
 // fallback. Annex B output puts SPS/PPS in every keyframe, so a student can
 // start decoding at any keyframe without any other setup.
 
-import type { BroadcastFrameMeta } from '../../shared/protocol';
+import type { FrameMeta } from '../shared/protocol';
 
 /** Hands out a track's frames one by one. Chromium has it in windows; TypeScript's DOM types don't include it. */
 declare const MediaStreamTrackProcessor: new (init: { track: MediaStreamTrack }) => { readable: ReadableStream<VideoFrame> };
 
-export interface EncodedFrame extends BroadcastFrameMeta {
+export interface EncodedFrame extends FrameMeta {
   data: Uint8Array;
 }
 
 /** H.264 High and Constrained Baseline at level 4.0 (up to 1920×1080), then VP8. */
 const CODECS = ['avc1.640028', 'avc1.42E028', 'vp8'];
-const FRAME_RATE = 15;
 /** Keyframes are ~10× an ordinary frame; when several students ask at once, one per second serves them all. */
 const MIN_KEYFRAME_INTERVAL_MS = 1000;
 /** A still screen sends no new frames, so a student who joins then gets the last picture again, as a keyframe. */
@@ -50,8 +50,9 @@ export class ScreenEncoder {
     track: MediaStreamTrack,
     private bitrate: number,
     private readonly output: (frame: EncodedFrame) => void,
-    /** Encoding is impossible on this computer; the broadcast should stop. */
+    /** Encoding is impossible on this computer; the stream should stop. */
     private readonly failed: (message: string) => void,
+    private readonly frameRate = 15,
   ) {
     this.reader = ScreenEncoder.read(track);
     void this.pump();
@@ -177,7 +178,7 @@ export class ScreenEncoder {
             width,
             height,
             bitrate: this.bitrate,
-            framerate: FRAME_RATE,
+            framerate: this.frameRate,
             latencyMode: 'realtime',
             hardwareAcceleration: acceleration,
             ...(codec.startsWith('avc1') ? { avc: { format: 'annexb' } } : {}),

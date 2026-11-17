@@ -116,7 +116,16 @@ grid.init({
 groups.init({ create: () => void createGroup(targets.selectedIds()), menu: groupMenu });
 register.init({ newRegister: () => void register.start(targets.current()) });
 handouts.init({ current: targets.current });
-viewer.init({ toggleLock, dialogOpen: dialogs.anyOpen });
+viewer.init({
+  toggleLock,
+  dialogOpen: dialogs.anyOpen,
+  toggleExhibit: (s, sessionId) => {
+    if (broadcast.shownView() === sessionId) broadcast.stopStudent();
+    else broadcast.showStudent(targets.current(), s.id, sessionId, store.displayName(s));
+  },
+  exhibiting: (sessionId) => broadcast.shownView() === sessionId,
+});
+broadcast.onChange(viewer.renderExhibit);
 help.init({ view: (s) => viewer.open(s, false), chat: (s) => chat.openThread(s.id) });
 chat.init();
 poll.init({ newPoll: () => poll.openDialog(targets.current()) });
@@ -200,8 +209,14 @@ api.onEvent((event: TeacherEvent) => {
     case 'thumb':
       grid.showThumb(event.id, event.jpeg);
       break;
-    case 'signal':
-      viewer.handleSignal(event.sessionId, event.signal);
+    case 'view-frame':
+      viewer.handleFrame(event.sessionId, event.meta, event.data);
+      break;
+    case 'view-mode':
+      viewer.setMode(event.sessionId, event.mode, event.reason);
+      break;
+    case 'exhibit-ended':
+      broadcast.studentShowEnded();
       break;
     case 'broadcast-keyframe':
       broadcast.keyframe();
