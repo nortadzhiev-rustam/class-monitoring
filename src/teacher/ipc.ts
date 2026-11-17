@@ -85,6 +85,8 @@ export interface TeacherState {
   students: StudentSummary[];
   roster: RosterEntry[];
   groups: Group[];
+  /** Student ids in the order the teacher arranged the cards; empty for name order. */
+  order: string[];
   platform: Platform;
   /** The teacher's monitors, main one first (see orderDisplays). */
   screens: TeacherScreen[];
@@ -144,6 +146,8 @@ export interface TeacherApi {
   /** If the console isn't in front: a desktop notification plus a Dock bounce / taskbar flash. */
   attention(title: string, body?: string): void;
   saveGroups(groups: Group[]): Promise<Group[]>;
+  /** Saves the cards' order (student ids); an empty list means name order. */
+  saveOrder(ids: string[]): Promise<void>;
   registerStart(target: Target): Promise<string>;
   registerEnd(): void;
   /** Asks where to save, then writes the rows as CSV; resolves to the path or null if cancelled. */
@@ -159,6 +163,8 @@ export interface TeacherApi {
   openUrl(target: Target, url: string): Promise<number>;
   openApp(target: Target, name: string): Promise<number>;
   power(target: Target, action: PowerAction): Promise<number>;
+  /** Asks every open app on the targets to quit after a warning. */
+  closeApps(target: Target): Promise<number>;
   /** Blocks these apps for the target (null turns blocking off). */
   setApps(target: Target, apps: string[] | null): void;
   /** Wake-on-LAN for offline students; resolves to how many computers were sent a packet. */

@@ -43,6 +43,7 @@
       <span id="count">0 online</span>
     </button>
     <div class="spacer"></div>
+    <button class="link" id="sort-name" type="button" title="You dragged the cards into your own order. Click to sort them by name again." hidden>Sort by name</button>
     <label class="toggle" title="Also show computers that aren't connected right now">
       <input id="show-offline" type="checkbox" checked>
       Show offline
@@ -81,7 +82,7 @@
     <button class="btn" id="files" type="button"><svg class="icon"><use href="#i-folder"/></svg>Files<svg class="icon caret"><use href="#i-down"/></svg></button>
     <span class="divider"></span>
     <button class="btn" id="open" type="button"><svg class="icon"><use href="#i-open"/></svg>Open<svg class="icon caret"><use href="#i-down"/></svg></button>
-    <button class="btn" id="apps" type="button"><svg class="icon"><use href="#i-block"/></svg>Block apps</button>
+    <button class="btn" id="apps" type="button"><svg class="icon"><use href="#i-block"/></svg>Apps<svg class="icon caret"><use href="#i-down"/></svg></button>
     <button class="btn" id="web" type="button"><svg class="icon"><use href="#i-globe"/></svg>Websites<svg class="icon caret"><use href="#i-down"/></svg></button>
     <button class="btn" id="power" type="button"><svg class="icon"><use href="#i-power"/></svg>Power<svg class="icon caret"><use href="#i-down"/></svg></button>
   </div>
@@ -197,9 +198,9 @@
   <div class="toasts" id="toasts" aria-live="polite"></div>
 
   <template id="card-template">
-    <article class="card">
+    <article class="card" draggable="true">
       <div class="screen">
-        <img alt="">
+        <img alt="" draggable="false">
         <div class="placeholder"></div>
         <button class="select" type="button" aria-label="Select"><svg class="icon"><use href="#i-check"/></svg></button>
         <div class="badges"></div>
@@ -216,7 +217,7 @@
           <button class="chip icon-chip" data-action="more" type="button" title="More"><svg class="icon"><use href="#i-more"/></svg></button>
         </div>
       </div>
-      <footer>
+      <footer title="Drag to move this computer to another place">
         <div class="who"><strong class="name"></strong><span class="meta"></span></div>
         <span class="os"></span>
       </footer>

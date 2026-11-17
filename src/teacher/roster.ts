@@ -1,24 +1,29 @@
 // Every student computer this console has seen, kept in roster.json so absent
-// students still show up (greyed out), and so names, groups and Wake-on-LAN
-// survive restarts. Groups live here too, since they are lists of these ids.
+// students still show up (greyed out), and so names, groups, the card order
+// and Wake-on-LAN survive restarts. Groups and the order live here too, since
+// they are lists of these ids.
 
 import fs from 'node:fs';
 import path from 'node:path';
 import type { StudentInfo } from '../shared/protocol';
 import type { Group, RosterEntry } from './ipc';
+import { cleanOrder } from './order';
 
 const SAVE_DELAY_MS = 500;
 
 export class Roster {
   private readonly entries = new Map<string, RosterEntry>();
   private groupList: Group[] = [];
+  /** The teacher's arrangement of the cards; empty means name order. */
+  private orderList: string[] = [];
   private saveTimer: NodeJS.Timeout | null = null;
 
   constructor(private readonly file: string) {
     try {
-      const saved = JSON.parse(fs.readFileSync(file, 'utf8')) as { students?: RosterEntry[]; groups?: Group[] };
+      const saved = JSON.parse(fs.readFileSync(file, 'utf8')) as { students?: RosterEntry[]; groups?: Group[]; order?: string[] };
       for (const entry of saved.students ?? []) if (entry?.id) this.entries.set(entry.id, entry);
       this.groupList = cleanGroups(saved.groups ?? []);
+      this.orderList = cleanOrder(saved.order);
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') console.warn('[roster] starting empty:', (err as Error).message);
     }
@@ -59,6 +64,7 @@ export class Roster {
   forget(id: string): void {
     if (!this.entries.delete(id)) return;
     for (const group of this.groupList) group.members = group.members.filter((m) => m !== id);
+    this.orderList = this.orderList.filter((m) => m !== id);
     this.scheduleSave();
   }
 
@@ -78,6 +84,16 @@ export class Roster {
     this.groupList = cleanGroups(groups);
     this.scheduleSave();
     return this.groups();
+  }
+
+  order(): string[] {
+    return [...this.orderList];
+  }
+
+  /** The cards' order as the teacher dragged them; an empty list goes back to name order. */
+  setOrder(ids: string[]): void {
+    this.orderList = cleanOrder(ids);
+    this.scheduleSave();
   }
 
   /** Writes pending changes now (on quit). */
@@ -100,7 +116,7 @@ export class Roster {
       fs.mkdirSync(path.dirname(this.file), { recursive: true });
       // Write-then-rename so a crash mid-write never leaves a truncated roster.
       const tmp = `${this.file}.tmp`;
-      fs.writeFileSync(tmp, JSON.stringify({ students: this.list(), groups: this.groupList }, null, 2));
+      fs.writeFileSync(tmp, JSON.stringify({ students: this.list(), groups: this.groupList, order: this.orderList }, null, 2));
       fs.renameSync(tmp, this.file);
     } catch (err) {
       console.warn('[roster] could not save:', (err as Error).message);

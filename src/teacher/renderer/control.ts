@@ -1,6 +1,6 @@
 // Toolbar actions that act on the students' computers themselves: open a
-// website or app, block apps, website rules, and power (log off, restart,
-// shut down, wake).
+// website or app, close or block apps, website rules, and power (log off,
+// restart, shut down, wake).
 
 import type { PowerAction } from '../../shared/protocol';
 import { MAX_DOMAINS, normaliseDomain, type WebRules } from '../../shared/web-rules';
@@ -49,7 +49,28 @@ async function openApp(to: Resolved): Promise<void> {
   await report(api.openApp(to.target, name), (n) => `Opening ${name} on ${plural(n, 'computer')}.`);
 }
 
-// ---------------------------------------------------------------- block apps
+// ---------------------------------------------------------------- apps
+
+/** Apps ▾: close everything open now, or keep some apps from running. */
+export function appsMenu(anchor: HTMLElement, to: Resolved): void {
+  showMenu(anchor, [
+    { label: 'Close all apps…', action: () => void closeApps(to) },
+    { label: 'Block apps…', action: () => blockApps(to) },
+  ]);
+}
+
+async function closeApps(to: Resolved): Promise<void> {
+  if (!to.online) {
+    nobody();
+    return;
+  }
+  const ok = await askConfirm(
+    `Close all apps ${to.target.everyone ? 'on every computer' : `for ${to.label}`}?`,
+    `${plural(to.online, 'student')} will see a 15-second warning to save their work. Then every open app is asked to quit; an app with unsaved work may ask the student first.`,
+    'Close apps',
+  );
+  if (ok) await report(api.closeApps(to.target), (n) => `Closing apps on ${plural(n, 'computer')} in 15 seconds.`);
+}
 
 const appsDialog = $<HTMLDialogElement>('#apps-dialog');
 const appsList = $<HTMLTextAreaElement>('#apps-list');
@@ -57,7 +78,7 @@ let appsTarget: Resolved | null = null;
 
 const lines = (text: string) => [...new Set(text.split(/\r?\n|,/).map((l) => l.trim()).filter(Boolean))];
 
-export function blockApps(to: Resolved): void {
+function blockApps(to: Resolved): void {
   appsTarget = to;
   $('#apps-title').textContent = `Block apps for ${forWhom(to)}`;
   appsList.value = prefs.get('blockedApps') ?? '';

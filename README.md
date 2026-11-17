@@ -11,7 +11,7 @@ A LAN classroom-management app in the spirit of NetSupport School: a **teacher c
 | Live thumbnails | Every student's screen every 2 s; with several monitors, all of them as arranged |
 | Remote view | Click a student to stream their screen over WebRTC (up to 1920×1200, 20 fps), switching between their monitors |
 | Remote control | "Take control" sends your mouse and keyboard to the screen you're viewing; Cmd↔Ctrl swap between Mac and Windows |
-| Lock screens | Full-screen lock with your message on every monitor |
+| Lock screens | Full-screen lock with your message on every monitor. While it (or your shown screen) is up, the student's keyboard and mouse are blocked and the taskbar / Dock is hidden |
 | Show my screen | Your screen streamed full-screen to students; with several monitors, pick which one and switch while showing |
 
 **Communicate**
@@ -29,6 +29,7 @@ A LAN classroom-management app in the spirit of NetSupport School: a **teacher c
 | --- | --- |
 | Register | Students sign in with their name; see who's present or missing and export a CSV |
 | Groups | Named groups as chips above the grid; any action can target a group |
+| Arrange computers | Drag cards into your own order, e.g. to match where the computers stand in the room. The order is kept across restarts, new computers join at the end, and **Sort by name** puts it back |
 | Send files | Hand out worksheets into students' `Documents/ClassMonitor/From teacher` |
 | Collect work | Students hand in files into your `Documents/ClassMonitor/Collected/<title>/<student>` |
 
@@ -37,7 +38,8 @@ A LAN classroom-management app in the spirit of NetSupport School: a **teacher c
 | Feature | How it works |
 | --- | --- |
 | Open website / app | Opens a link in the default browser or an app by name |
-| Block apps | Named apps (with `*` wildcards) are closed whenever they start |
+| Close all apps | **Apps ▾ → Close all apps** asks every open app to quit after a 15-second warning, the same way Cmd+Q or a window's ✕ would, so apps with unsaved work can ask the student first. Finder, File Explorer and ClassMonitor stay open |
+| Block apps | **Apps ▾ → Block apps**: named apps (with `*` wildcards) are closed whenever they start |
 | Websites | Block all websites in one go, or block-list / allow-list sites, in Chrome and Edge via the ClassMonitor Web Filter extension |
 | Power | Log off, restart or shut down after a 15-second warning; Wake-on-LAN for offline computers |
 
@@ -67,7 +69,7 @@ In another:
 CM_CLASS_KEY=dev-class-key CM_OVERLAY_WINDOWED=1 npm run student
 ```
 
-The student appears in the console within a couple of seconds. `CM_OVERLAY_WINDOWED=1` shows the lock and broadcast screens as small windows instead of taking over your screen. If you do lock yourself for real, press **Cmd/Ctrl+Alt+Shift+U** (development builds only).
+The student appears in the console within a couple of seconds. `CM_OVERLAY_WINDOWED=1` shows the lock and broadcast screens as small windows instead of taking over your screen. If you do lock yourself for real, press **Cmd/Ctrl+Alt+Shift+U** (development builds only). Development builds never block the keyboard and mouse (installed apps do); set `CM_INPUT_LOCK=1` to try it, and keep the teacher on another computer.
 
 On macOS, grant **Screen Recording** to Electron (and **Accessibility** for remote control) in System Settings → Privacy & Security, then restart the apps.
 
@@ -121,7 +123,7 @@ Website rules are applied by the **ClassMonitor Web Filter** extension, which ta
    - Chrome: `ExtensionInstallForcelist` = `<chrome id>;https://clients2.google.com/service/update2/crx` (Windows: `HKLM\Software\Policies\Google\Chrome\ExtensionInstallForcelist`; macOS: a `com.google.Chrome` configuration profile).
    - Edge: `ExtensionInstallForcelist` = `<edge id>;https://edge.microsoft.com/extensionwebstorebase/v1/crx` (Windows: `HKLM\Software\Policies\Microsoft\Edge\ExtensionInstallForcelist`; macOS: a `com.microsoft.Edge` profile).
 
-**Websites ▾ → Block all websites** stops every page from opening in Chrome and Edge (an allow-list with nothing on it); **Allow all websites** lifts it. It covers browsers only: other apps that use the internet keep working, so pair it with **Block apps** if needed.
+**Websites ▾ → Block all websites** stops every page from opening in Chrome and Edge (an allow-list with nothing on it); **Allow all websites** lifts it. It covers browsers only: other apps that use the internet keep working, so pair it with **Apps ▾ → Block apps** if needed.
 
 While rules are on, Firefox, Safari and other browsers the extension can't reach are closed (you can switch this off under **Choose sites…**, and Block all websites follows that choice). Cards say **Web filter missing** where Chrome or Edge is open without the extension.
 
@@ -153,7 +155,7 @@ To try it before publishing: load `dist/extension` unpacked (chrome://extensions
 - **Not yet run on Windows.** Everything is tested end to end on macOS. The Windows paths are written but unverified: the input helper (including multi-monitor and high-DPI coordinates), `tasklist`-based app blocking, `shutdown`, native-messaging registration in the registry, and installer firewall rules.
 - **Multi-monitor** compositing, the screen switcher and control on a second screen are unit-tested, but the end-to-end step was skipped on the single-display development Mac.
 - **The web filter** has been exercised through its native-messaging bridge, not yet inside a real Chrome or Edge.
-- **Lock screen** on Windows covers the screen and swallows keys, but Ctrl+Alt+Del and the Windows key still work. Remote control can't drive elevated windows or UAC prompts. Both need a SYSTEM service.
+- **Lock screen and shown screen** block the keyboard and mouse with the student's own rights. On Windows, low-level hooks (`native/windows/lock-helper.ps1`) swallow every key including the Windows key and Alt+Tab, and the taskbar is hidden; Ctrl+Alt+Del can't be blocked, so a student can still reach Task Manager from there unless Group Policy turns it off. On macOS an event tap does the same and needs the **Accessibility** permission (the same one remote control needs); without it only kiosk mode protects the lock screen. Remote control can't drive elevated windows or UAC prompts; that needs a SYSTEM service.
 - **App blocking and power** act with the student's own rights: they can only close the student's own programs, and power actions need the OS to allow standard users to restart (the default on Windows client editions).
 - **Broadcast** encodes one stream per student: fine for about 30 students on wired Ethernet; larger rooms or Wi-Fi need an SFU or multicast.
 - Anyone who can read `student.json` has the class key. Use a different key per room and keep the file admin-writable.

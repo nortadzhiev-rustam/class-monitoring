@@ -120,7 +120,7 @@ function render(card: PromptCard): HTMLElement {
         el('footer', {}, button('OK', () => api.promptAction(card.id, 'dismiss'))),
       );
     case 'power': {
-      const verb = { logoff: 'log you off', restart: 'restart this computer', shutdown: 'shut down this computer' }[card.action];
+      const verb = { logoff: 'log you off', restart: 'restart this computer', shutdown: 'shut down this computer', 'close-apps': 'close your apps' }[card.action];
       const count = el('p', { className: 'countdown', textContent: '' });
       count.dataset.deadline = String(card.deadline);
       tick(count);

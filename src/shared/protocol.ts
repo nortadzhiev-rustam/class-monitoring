@@ -99,7 +99,7 @@ export const LIMITS = {
   collectTitle: 80,
   url: 2000,
   blockedApps: 50,
-  /** Seconds of warning before a power action. */
+  /** Seconds of warning before a power action or closing all apps. */
   powerDelayMax: 120,
   /** Largest single file sent or collected. */
   fileBytes: 200 * 1024 * 1024,
@@ -147,6 +147,8 @@ export type TeacherMessage =
   | { type: 'open-url'; url: string }
   | { type: 'open-app'; name: string }
   | { type: 'power'; action: PowerAction; delay: number }
+  /** Asks every open app to quit after `delay` seconds of warning. Older agents ignore it. */
+  | { type: 'close-apps'; delay: number }
   | FileMessage;
 
 export type StudentMessage =

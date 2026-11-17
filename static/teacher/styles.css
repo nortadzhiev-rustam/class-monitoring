@@ -258,6 +258,8 @@ main { flex: 1; overflow: auto; position: relative; }
 .screen:hover .select, .select:focus-visible, body.selecting .select, .card.selected .select { opacity: 1; }
 .card.selected .select { background: var(--accent); border-color: var(--accent); color: #fff; }
 .card.controlled { border-color: var(--accent); }
+/* Where the dragged card will land; the others make room as it moves. */
+.card.dragging { opacity: 0.35; }
 
 .screen {
   position: relative;
@@ -341,6 +343,7 @@ main { flex: 1; overflow: auto; position: relative; }
   align-items: center;
   gap: 8px;
   padding: 9px 12px;
+  cursor: grab;
 }
 .who { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .who .name, .who .meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

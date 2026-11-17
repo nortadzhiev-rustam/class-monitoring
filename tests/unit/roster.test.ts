@@ -37,3 +37,22 @@ test('a corrupt roster file starts empty instead of crashing', () => {
   fs.writeFileSync(file, '{not json');
   assert.deepEqual(new Roster(file).list(), []);
 });
+
+test('the card order is saved, and forgetting a computer drops it from the order', () => {
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'roster-')), 'roster.json');
+  const roster = new Roster(file);
+  roster.seen(info('id-aaaaaaaa', 'PC-01'), '10.0.0.5');
+  roster.seen(info('id-bbbbbbbb', 'PC-02'), '10.0.0.6');
+  roster.seen(info('id-cccccccc', 'PC-03'), '10.0.0.7');
+  roster.setOrder(['id-cccccccc', 'id-aaaaaaaa', 'id-cccccccc', 'id-bbbbbbbb']);
+  roster.forget('id-aaaaaaaa');
+  roster.flush();
+
+  assert.deepEqual(new Roster(file).order(), ['id-cccccccc', 'id-bbbbbbbb']);
+});
+
+test('a roster from before card ordering loads in name order', () => {
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'roster-')), 'roster.json');
+  fs.writeFileSync(file, JSON.stringify({ students: [], groups: [] }));
+  assert.deepEqual(new Roster(file).order(), []);
+});
