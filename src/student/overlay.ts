@@ -14,6 +14,15 @@ import type { OverlayState } from './ipc';
 const WINDOWED = process.env.CM_OVERLAY_WINDOWED === '1';
 /** How often the windows put themselves back on top, over anything that popped up since. */
 const RAISE_EVERY_MS = 1000;
+/**
+ * Windows: every overlay runs in real full-screen mode on its monitor, the way
+ * games do. A window that merely has the screen's size isn't enough: Chromium
+ * squeezes ordinary windows back into the work area (the screen minus the
+ * taskbar) whenever Windows reports the work area changing, and the taskbar's
+ * strip stays reserved even while the lock helper hides the taskbar, so it was
+ * left uncovered. A full-screen window always fills the whole monitor.
+ */
+const GAME_FULL_SCREEN = !WINDOWED && process.platform === 'win32';
 
 /** Lock windows refuse to close, except when the app itself is quitting (logout, shutdown). */
 let quitting = false;
@@ -128,7 +137,12 @@ export class Overlay {
     }
     if (!WINDOWED) {
       this.raiseTimer = setInterval(() => {
-        for (const win of this.windows) if (!win.isDestroyed()) win.moveTop();
+        for (const win of this.windows) {
+          if (win.isDestroyed()) continue;
+          // Back to full screen if anything took it out (a display change, Explorer restarting).
+          if (GAME_FULL_SCREEN && win.isVisible() && !win.isFullScreen()) win.setFullScreen(true);
+          win.moveTop();
+        }
       }, RAISE_EVERY_MS);
     }
   }
@@ -150,11 +164,12 @@ export class Overlay {
       movable: WINDOWED,
       minimizable: false,
       maximizable: false,
-      fullscreenable: false,
+      // On a Mac, kiosk mode does the covering (and must not become a separate full-screen Space).
+      fullscreenable: GAME_FULL_SCREEN,
       skipTaskbar: !WINDOWED,
       alwaysOnTop: !WINDOWED,
       // Kiosk on the primary display hides the taskbar/Dock and, on macOS, blocks
-      // app switching and Force Quit while the lock is up.
+      // app switching and Force Quit while the lock is up. On Windows it is full screen.
       kiosk: !WINDOWED && isPrimary,
       title: 'ClassMonitor',
       webPreferences: {
@@ -189,6 +204,7 @@ export class Overlay {
     });
     win.once('ready-to-show', () => {
       win.showInactive();
+      if (GAME_FULL_SCREEN) win.setFullScreen(true);
       if (!isPrimary) return;
       if (WINDOWED) win.focus();
       else takeFocus(win);
