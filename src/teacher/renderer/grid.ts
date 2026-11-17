@@ -169,10 +169,11 @@ function badges(s: Student): HTMLElement[] {
   if (s.unread) result.push(pill(`${s.unread} new message${s.unread === 1 ? '' : 's'}`, 'chat'));
   if (s.displays.length > 1) result.push(pill(`${s.displays.length} screens`, 'chat'));
   if (s.policy.apps) result.push(pill('Apps blocked'));
-  // Chrome/Edge open but the extension never reported in: the rules can't apply there.
+  // Chrome/Edge open, but neither the extension nor the address watcher can reach it: the rules can't apply there.
   if (s.policy.web) {
     const rules = blocksEverySite(s.policy.web) ? 'Websites blocked' : 'Web rules on';
-    result.push(s.web?.extension || !s.web?.browserOpen ? pill(rules) : pill('Web filter missing', 'hand'));
+    const covered = s.web?.extension || s.web?.watching || !s.web?.browserOpen;
+    result.push(covered ? pill(rules) : pill('Web filter missing', 'hand'));
   }
   const site = s.web?.url ? hostname(s.web.url) : null;
   if (site) result.push(pill(site, 'answer'));

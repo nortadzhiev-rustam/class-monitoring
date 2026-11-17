@@ -17,6 +17,8 @@ mac:
   extendInfo:
     # Menu-bar agent: no Dock icon.
     LSUIElement: true
+    # Shown when macOS asks the student to allow Automation (browsers for website rules, System Events for power).
+    NSAppleEventsUsageDescription: ClassMonitor Student reads and changes the address in your web browser so your teacher's website rules apply, and restarts or shuts down the computer when your teacher asks.
   extraResources:
     - from: native-bin/darwin
       to: native-bin/darwin

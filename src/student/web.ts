@@ -3,6 +3,8 @@
 // local socket here and must present a secret only this user can read. Rules
 // go down to the extension; the student's current site comes back up and is
 // reported to the teacher, along with whether the extension is there at all.
+// Without the extension, the address watcher (web-watch.ts) applies the rules
+// from outside the browser; the teacher hears whether that works too.
 
 import { app } from 'electron';
 import { execFile } from 'node:child_process';
@@ -17,13 +19,16 @@ import { DEV_EXTENSION_ID, EXTENSION_ID, NATIVE_HOST, type WebRules } from '../s
 import { runningProcesses } from './app-blocker';
 import { bridgeSecretPath, bridgeSocketPath } from './native-host';
 import { send } from './state';
+import { watchBrowsers, type WatchStatus } from './web-watch';
 
 const BROWSER_CHECK_MS = 10_000;
 const CHROMIUM_BROWSERS = ['google chrome', 'chrome', 'msedge', 'microsoft edge'];
 
 let rules: WebRules | null = null;
 const clients = new Set<net.Socket>();
-let status: WebStatus = { extension: false, browserOpen: false, url: null, title: null };
+/** What the extension says (and whether Chrome/Edge is open); `watch` is what the address watcher says. */
+let status: Omit<WebStatus, 'watching'> = { extension: false, browserOpen: false, url: null, title: null };
+let watch: WatchStatus = { watching: false, url: null, title: null };
 let lastReported = '';
 let reportTimer: NodeJS.Timeout | null = null;
 let browserTimer: NodeJS.Timeout | null = null;
@@ -111,6 +116,10 @@ function accept(socket: net.Socket, secret: string): void {
 export function setWebRules(next: WebRules | null): void {
   rules = next;
   for (const socket of clients) write(socket, { type: 'rules', rules });
+  watchBrowsers(rules, (next) => {
+    watch = next;
+    scheduleReport();
+  });
   if (rules && !browserTimer) {
     browserTimer = setInterval(() => void checkBrowser(), BROWSER_CHECK_MS);
     void checkBrowser();
@@ -127,20 +136,31 @@ async function checkBrowser(): Promise<void> {
   update({ browserOpen: names.some((n) => CHROMIUM_BROWSERS.includes(n)) });
 }
 
-function update(patch: Partial<WebStatus>): void {
+function update(patch: Partial<typeof status>): void {
   status = { ...status, ...patch };
+  scheduleReport();
+}
+
+function scheduleReport(): void {
   reportTimer ??= setTimeout(() => {
     reportTimer = null;
     reportWebStatus();
   }, 300);
 }
 
+/** The extension's view of the current site wins while it's connected; it sees background tabs too. */
+function combined(): WebStatus {
+  const site = status.extension ? status : watch;
+  return { extension: status.extension, watching: watch.watching, browserOpen: status.browserOpen, url: site.url, title: site.title };
+}
+
 /** Tells the teacher about the browser; `force` after reconnecting. */
 export function reportWebStatus(force = false): void {
-  const json = JSON.stringify(status);
+  const current = combined();
+  const json = JSON.stringify(current);
   if (!force && json === lastReported) return;
   lastReported = json;
-  send({ type: 'web', ...status });
+  send({ type: 'web', ...current });
 }
 
 // ---------------------------------------------------------------- registration
