@@ -6,7 +6,7 @@ import type { WebRules } from './web-rules';
 
 export const APP_ID = 'class-monitor';
 /** Teacher and students must match; bump on any incompatible message change. */
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 /** UDP port students listen on for teacher beacons. */
 export const DISCOVERY_PORT = 47800;
 /** TCP port the teacher console accepts WebSocket connections on. */
@@ -116,6 +116,19 @@ export type FileMessage =
   | { type: 'file-end'; transferId: string; sha256: string }
   | { type: 'file-ack'; transferId: string; ok: boolean; error?: string };
 
+/**
+ * One encoded picture of the teacher's screen ("Show my screen"). The screen is
+ * encoded once and the same frames go to every student; a student can start
+ * decoding at any keyframe. `codec` is a WebCodecs codec string; H.264 is Annex B,
+ * so keyframes carry their own SPS/PPS.
+ */
+export interface BroadcastFrameMeta {
+  codec: string;
+  key: boolean;
+  /** Microseconds, as the encoder produced it. */
+  timestamp: number;
+}
+
 export type RtcSignal =
   | { kind: 'offer' | 'answer'; sdp: string }
   | { kind: 'ice'; candidate: RTCIceCandidateInit | null };
@@ -140,6 +153,8 @@ export type TeacherMessage =
   | { type: 'control'; sessionId: string; enabled: boolean; teacherPlatform: Platform }
   | { type: 'input'; sessionId: string; events: InputEvent[] }
   | { type: 'signal'; sessionId: string; signal: RtcSignal }
+  /** Sent with the encoded frame as the payload. */
+  | ({ type: 'broadcast-frame'; sessionId: string } & BroadcastFrameMeta)
   | { type: 'message'; id: string; text: string }
   | { type: 'chat'; id: string; text: string; at: number }
   /** The teacher has dealt with the student's raised hand. */
@@ -155,6 +170,7 @@ export type StudentMessage =
   | { type: 'status'; locked: boolean; viewing: boolean; controlled: boolean; hand: string | null }
   /** Sent with a JPEG payload. */
   | { type: 'thumb'; width: number; height: number }
+  /** The student's screen is ready to show the broadcast; sent again after a decoding problem, to get a fresh keyframe. */
   | { type: 'broadcast-ready'; sessionId: string }
   | { type: 'signal'; sessionId: string; signal: RtcSignal }
   | { type: 'chat'; id: string; text: string; at: number }

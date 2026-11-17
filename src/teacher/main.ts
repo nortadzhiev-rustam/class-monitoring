@@ -6,9 +6,10 @@ import { orderDisplays } from '../shared/displays';
 import { configureApp, shareScreenWithoutPicker } from '../shared/electron-setup';
 import { pickFiles, pickSavePath } from '../shared/native-dialogs';
 import { randomUUID } from 'node:crypto';
-import { APP_NAME, CONTROL_PORT, LIMITS, type InputEvent, type Platform, type Poll, type PowerAction, type RtcSignal } from '../shared/protocol';
+import { APP_NAME, CONTROL_PORT, LIMITS, type BroadcastFrameMeta, type InputEvent, type Platform, type Poll, type PowerAction, type RtcSignal } from '../shared/protocol';
 import { generateClassKey } from '../shared/secure-channel';
 import { cleanRules, type WebRules } from '../shared/web-rules';
+import { BroadcastRelay } from './broadcast-relay';
 import { toCsv } from './csv';
 import { TeacherFiles } from './files';
 import type { ChatMessage, Group, Target, TeacherEvent, TeacherScreen, TeacherSettings, TeacherState } from './ipc';
@@ -24,6 +25,12 @@ let win: BrowserWindow | null = null;
 let server: ClassServer;
 let roster: Roster;
 let files: TeacherFiles;
+/** Sends "Show my screen" frames, encoded once in the window, to every student watching. */
+let relay: BroadcastRelay;
+/** Remote views the window has open (session id -> student id), to close if the window crashes. */
+const viewSessions = new Map<string, string>();
+/** Open while the "not responding" prompt is up; aborting it closes the prompt. */
+let hangPrompt: AbortController | null = null;
 /** True while the teacher is remote-controlling a student. */
 let controlling = false;
 let quitting = false;
@@ -98,6 +105,45 @@ function setControlling(enabled: boolean): void {
   if (process.platform === 'darwin') Menu.setApplicationMenu(enabled ? null : appMenu);
 }
 
+/**
+ * The window crashed or is being reloaded: end what it was running, so students
+ * aren't left on a frozen broadcast or under remote control nobody can release.
+ */
+function endWindowSessions(): void {
+  if (relay.session) {
+    relay.stop();
+    server.clearPolicy('broadcast');
+  }
+  for (const [sessionId, id] of viewSessions) server.send(id, { type: 'view-stop', sessionId });
+  viewSessions.clear();
+  setControlling(false);
+}
+
+function reloadWindow(): void {
+  if (!win || win.isDestroyed()) return;
+  endWindowSessions();
+  win.webContents.reload();
+}
+
+/** The window has stopped responding: offer to reload it rather than leave the teacher with a frozen console. */
+async function offerReload(): Promise<void> {
+  if (!win || hangPrompt || quitting) return;
+  hangPrompt = new AbortController();
+  const { response } = await dialog.showMessageBox(win, {
+    type: 'warning',
+    buttons: ['Reload', 'Wait'],
+    defaultId: 0,
+    cancelId: 1,
+    message: 'ClassMonitor is not responding',
+    detail: 'Reloading stops showing your screen and closes any student screen you have open. Students stay connected.',
+    signal: hangPrompt.signal,
+  });
+  hangPrompt = null;
+  if (response !== 0 || !win || win.isDestroyed()) return;
+  win.webContents.forcefullyCrashRenderer();
+  reloadWindow();
+}
+
 function createWindow(): void {
   win = new BrowserWindow({
     width: 1280,
@@ -125,6 +171,14 @@ function createWindow(): void {
   });
   win.on('focus', () => win?.flashFrame(false));
   win.on('closed', () => (win = null));
+  // A crashed page would leave a blank, frozen window: bring it back.
+  win.webContents.on('render-process-gone', (_e, details) => {
+    if (quitting || details.reason === 'clean-exit') return;
+    console.error(`[teacher] console window ${details.reason} (exit code ${details.exitCode}); reloading`);
+    reloadWindow();
+  });
+  win.on('unresponsive', () => void offerReload());
+  win.on('responsive', () => hangPrompt?.abort());
 
   void win.loadFile(path.join(__dirname, 'index.html'));
 }
@@ -155,10 +209,14 @@ function registerIpc(): void {
   on('teacher:forget', (id: string) => roster.forget(id));
   on('teacher:lock', (target: Target, message: string) => server.setPolicy(asTarget(target), { lock: lockText(message) }));
   on('teacher:unlock', (target: Target) => server.setPolicy(asTarget(target), { lock: null }));
-  on('teacher:view-start', (id: string, sessionId: string, displayId?: string) =>
-    server.send(id, { type: 'view-start', sessionId, ...(typeof displayId === 'string' ? { displayId: displayId.slice(0, 32) } : {}) }),
-  );
-  on('teacher:view-stop', (id: string, sessionId: string) => server.send(id, { type: 'view-stop', sessionId }));
+  on('teacher:view-start', (id: string, sessionId: string, displayId?: string) => {
+    viewSessions.set(String(sessionId), String(id));
+    server.send(id, { type: 'view-start', sessionId, ...(typeof displayId === 'string' ? { displayId: displayId.slice(0, 32) } : {}) });
+  });
+  on('teacher:view-stop', (id: string, sessionId: string) => {
+    viewSessions.delete(String(sessionId));
+    server.send(id, { type: 'view-stop', sessionId });
+  });
   on('teacher:control', (id: string, sessionId: string, enabled: boolean) => {
     setControlling(enabled);
     server.send(id, { type: 'control', sessionId, enabled, teacherPlatform: process.platform as Platform });
@@ -171,9 +229,18 @@ function registerIpc(): void {
   });
   on('teacher:broadcast-start', (target: Target, sessionId: string) => {
     server.clearPolicy('broadcast');
+    relay.start(String(sessionId));
     server.setPolicy(asTarget(target), { broadcast: String(sessionId) });
   });
-  on('teacher:broadcast-stop', () => server.clearPolicy('broadcast'));
+  on('teacher:broadcast-stop', () => {
+    relay.stop();
+    server.clearPolicy('broadcast');
+  });
+  on('teacher:broadcast-frame', (sessionId: string, meta: BroadcastFrameMeta, data: Uint8Array) => {
+    if (typeof sessionId !== 'string' || !(data instanceof Uint8Array) || typeof meta?.codec !== 'string') return;
+    const frame = { codec: meta.codec.slice(0, 40), key: meta.key === true, timestamp: Number(meta.timestamp) || 0 };
+    relay.frame(sessionId, frame, Buffer.from(data.buffer, data.byteOffset, data.byteLength));
+  });
   handle('teacher:message', (target: Target, text: string) => {
     const body = clip(text, LIMITS.message);
     if (!body) throw new Error('Write a message first.');
@@ -311,12 +378,20 @@ app.whenReady().then(async () => {
   screen.on('display-metrics-changed', screensChanged);
   roster = new Roster(path.join(app.getPath('userData'), 'roster.json'));
   server = new ClassServer(loadConfig());
+  relay = new BroadcastRelay((id) => server.link(id), {
+    keyframe: () => emit({ type: 'broadcast-keyframe' }),
+    viewers: (count) => emit({ type: 'broadcast-viewers', count }),
+  });
+  // Chromium restarts a crashed graphics process by itself; the screen encoder starts over (see screen-encoder.ts).
+  app.on('child-process-gone', (_e, details) => console.warn(`[teacher] ${details.type} process ${details.reason} (exit code ${details.exitCode})`));
   server.on('joined', (student) => emit({ type: 'joined', student, entry: roster.seen(student.info, student.address) }));
   files = new TeacherFiles(server, emit, process.env.CM_FILES_DIR ?? path.join(app.getPath('documents'), 'ClassMonitor'), (id) => {
     const entry = roster.get(id);
     return entry?.name || entry?.hostname || id;
   });
   server.on('left', (id) => {
+    relay.left(id);
+    for (const [sessionId, student] of viewSessions) if (student === id) viewSessions.delete(sessionId);
     roster.left(id);
     files.left(id);
     emit({ type: 'left', id });
@@ -336,7 +411,7 @@ app.whenReady().then(async () => {
   server.on('status', (id, status) => emit({ type: 'status', id, status }));
   server.on('thumb', (id, jpeg) => emit({ type: 'thumb', id, jpeg }));
   server.on('signal', (id, sessionId, signal) => emit({ type: 'signal', id, sessionId, signal }));
-  server.on('broadcast-ready', (id, sessionId) => emit({ type: 'broadcast-ready', id, sessionId }));
+  server.on('broadcast-ready', (id, sessionId) => relay.ready(id, sessionId));
   server.on('student-error', (id, sessionId, message) => emit({ type: 'student-error', id, sessionId, message }));
 
   try {

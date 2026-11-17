@@ -1,7 +1,7 @@
 // Types shared by the student's main process, preload and renderers
 // (the hidden capture window, the lock/broadcast overlays and the setup window).
 
-import type { PowerAction, RtcSignal } from '../shared/protocol';
+import type { BroadcastFrameMeta, PowerAction, RtcSignal } from '../shared/protocol';
 
 export interface OverlayState {
   mode: 'lock' | 'broadcast';
@@ -71,7 +71,9 @@ export interface StudentApi {
   // Overlay windows
   overlayReady(): void;
   onOverlayState(listener: (state: OverlayState) => void): void;
+  /** The overlay can show the broadcast; sent again after a decoding problem, for a fresh keyframe. */
   broadcastReady(sessionId: string): void;
+  onBroadcastFrame(listener: (sessionId: string, meta: BroadcastFrameMeta, data: Uint8Array) => void): void;
 
   // Setup window
   setupInitial(): Promise<{ room: string; classKey: string; teacherHost: string; platform: string }>;

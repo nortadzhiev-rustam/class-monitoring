@@ -1,16 +1,18 @@
 // "Show my screen": streams the teacher's screen to the targeted students.
 // With several monitors the teacher picks one, and can switch while showing.
+// The screen is encoded once here (screen-encoder.ts) and the main process
+// sends the same frames to every student (broadcast-relay.ts).
 
-import { Peer } from '../../renderer-shared/peer';
-import type { RtcSignal } from '../../shared/protocol';
 import type { TeacherScreen } from '../ipc';
 import { $, api, toast } from './dom';
 import { showMenu } from './menu';
+import { ScreenEncoder } from './screen-encoder';
 import type { Resolved } from './targets';
 
-// Every student gets their own copy of the stream, so the class shares one
-// budget: up to 12 students get the full rate, a class of 30 about 1 Mbps each,
-// and the teacher's network link never carries more than ~30 Mbps.
+// Every student gets their own copy of the one stream, so the class shares a
+// network budget: up to 12 students get the full rate, a class of 30 about
+// 1 Mbps each, and the teacher's network link never carries more than ~30 Mbps.
+// (Screen content usually needs far less than the cap.)
 const CLASS_BUDGET = 30_000_000;
 const MAX_PER_STUDENT = 2_500_000;
 const MIN_PER_STUDENT = 500_000;
@@ -24,16 +26,19 @@ interface Broadcast {
   stream: MediaStream;
   /** The monitor being shown. */
   displayId: string | undefined;
-  peers: Map<string, Peer>;
-  bitrate: number;
+  encoder: ScreenEncoder;
   label: string;
 }
+
+/** Bit-rate changes wait for a burst of students joining to settle. */
+const REBALANCE_MS = 1000;
 
 let broadcast: Broadcast | null = null;
 let platform = '';
 let screens: TeacherScreen[] = [];
 /** Counts screen switches, so only the last of several quick clicks takes effect. */
 let switches = 0;
+let rebalanceTimer: number | null = null;
 
 export function init(teacherPlatform: string, teacherScreens: TeacherScreen[]): void {
   platform = teacherPlatform;
@@ -82,17 +87,20 @@ const stopTracks = (stream: MediaStream) => stream.getTracks().forEach((track) =
 
 export async function start(to: Resolved, displayId?: string): Promise<void> {
   const stream = await capture(displayId);
-  if (!stream) return;
+  const track = stream?.getVideoTracks()[0];
+  if (!stream || !track) return;
   const sessionId = crypto.randomUUID();
-  broadcast = {
-    sessionId,
-    stream,
-    displayId: displayId ?? screens.find((s) => s.primary)?.id,
-    peers: new Map(),
-    bitrate: perStudentBitrate(1),
-    label: to.label,
-  };
-  stream.getVideoTracks()[0]?.addEventListener('ended', stop);
+  const encoder = new ScreenEncoder(
+    track,
+    perStudentBitrate(1),
+    ({ data, ...meta }) => api.broadcastFrame(sessionId, meta, data),
+    (message) => {
+      toast(message);
+      stop();
+    },
+  );
+  broadcast = { sessionId, stream, displayId: displayId ?? screens.find((s) => s.primary)?.id, encoder, label: to.label };
+  track.addEventListener('ended', stop);
   api.broadcastStart(to.target, sessionId);
   render();
 }
@@ -108,50 +116,38 @@ async function switchScreen(displayId: string): Promise<void> {
     stopTracks(stream);
     return;
   }
+  const track = stream.getVideoTracks()[0];
+  if (!track) {
+    stopTracks(stream);
+    return;
+  }
   const old = session.stream;
   old.getVideoTracks()[0]?.removeEventListener('ended', stop);
   session.stream = stream;
   session.displayId = displayId;
-  stream.getVideoTracks()[0]?.addEventListener('ended', stop);
-  for (const peer of session.peers.values()) peer.replaceScreen(stream);
+  track.addEventListener('ended', stop);
+  session.encoder.replaceTrack(track);
   stopTracks(old);
   render();
 }
 
-/** A student's display window is ready; send it the teacher's screen. */
-export function connect(id: string, sessionId: string): void {
-  if (!broadcast || broadcast.sessionId !== sessionId) return;
-  broadcast.peers.get(id)?.close();
-  const peer = new Peer((signal) => api.signal(id, sessionId, signal));
-  broadcast.peers.set(id, peer);
-  peer.addScreen(broadcast.stream, perStudentBitrate(broadcast.peers.size));
-  peer.offer().catch((err) => console.error('[broadcast] offer failed', err));
-  rebalance(peer);
+/** A student needs a keyframe to start (or restart) showing the screen. */
+export function keyframe(): void {
+  broadcast?.encoder.requestKeyframe();
 }
 
-/** Re-splits the class budget when a student starts or stops watching (`fresh` already has its share). */
-function rebalance(fresh?: Peer): void {
-  if (!broadcast) return;
-  const bitrate = perStudentBitrate(broadcast.peers.size);
-  if (bitrate === broadcast.bitrate) return;
-  broadcast.bitrate = bitrate;
-  for (const peer of broadcast.peers.values()) if (peer !== fresh) peer.setMaxBitrate(bitrate);
-}
-
-export function handleSignal(id: string, sessionId: string, signal: RtcSignal): boolean {
-  if (broadcast?.sessionId !== sessionId) return false;
-  broadcast.peers.get(id)?.handle(signal);
-  return true;
-}
-
-export function studentLeft(id: string): void {
-  broadcast?.peers.get(id)?.close();
-  if (broadcast?.peers.delete(id)) rebalance();
+/** Re-splits the class budget when students start or stop watching. */
+export function viewers(count: number): void {
+  if (rebalanceTimer !== null) clearTimeout(rebalanceTimer);
+  rebalanceTimer = window.setTimeout(() => {
+    rebalanceTimer = null;
+    broadcast?.encoder.setBitrate(perStudentBitrate(count));
+  }, REBALANCE_MS);
 }
 
 export function stop(): void {
   if (!broadcast) return;
-  for (const peer of broadcast.peers.values()) peer.close();
+  broadcast.encoder.close();
   stopTracks(broadcast.stream);
   broadcast = null;
   api.broadcastStop();

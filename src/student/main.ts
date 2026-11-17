@@ -160,7 +160,11 @@ function onTeacherMessage(msg: TeacherMessage, payload: Buffer | undefined): voi
       break;
     case 'signal':
       if (session.owns(msg.sessionId)) session.relaySignal(msg.sessionId, msg.signal);
-      else overlay.sendSignal(msg.sessionId, msg.signal);
+      break;
+    case 'broadcast-frame':
+      if (payload && typeof msg.codec === 'string' && typeof msg.timestamp === 'number') {
+        overlay.sendFrame(msg.sessionId, { codec: msg.codec.slice(0, 40), key: msg.key === true, timestamp: msg.timestamp }, payload);
+      }
       break;
     case 'message':
       showPrompt({
@@ -243,8 +247,7 @@ function registerIpc(): void {
   const fromOverlay = (e: IpcMainEvent) => overlay.owns(e.sender);
 
   ipcMain.on('student:signal', (e, sessionId: string, signal: RtcSignal) => {
-    const allowed = session.isAgent(e.sender) ? session.owns(sessionId) : fromOverlay(e) && sessionId === overlay.broadcastSession;
-    if (allowed) send({ type: 'signal', sessionId, signal });
+    if (session.isAgent(e.sender) && session.owns(sessionId)) send({ type: 'signal', sessionId, signal });
   });
   ipcMain.on('student:view-error', (e, sessionId: string, message: string) => {
     if (!session.isAgent(e.sender)) return;

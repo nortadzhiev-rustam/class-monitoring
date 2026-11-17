@@ -4,6 +4,7 @@
 
 import { app, BrowserWindow, screen } from 'electron';
 import path from 'node:path';
+import type { BroadcastFrameMeta } from '../shared/protocol';
 import type { OverlayState } from './ipc';
 
 /** Development/testing: small ordinary windows instead of taking over the screen. */
@@ -19,6 +20,7 @@ export class Overlay {
   private lockMessage: string | null = null;
   private broadcastSessionId: string | null = null;
   private teacher = 'your teacher';
+  private rebuildTimer: NodeJS.Timeout | null = null;
 
   constructor(private readonly preload: string) {
     screen.on('display-added', () => this.rebuild());
@@ -69,11 +71,11 @@ export class Overlay {
     return this.windows.some((w) => !w.isDestroyed() && w.webContents === contents);
   }
 
-  /** Signals for the broadcast session go to the primary display's overlay. */
-  sendSignal(sessionId: string, signal: unknown): void {
-    if (sessionId === this.broadcastSessionId && this.primary && !this.primary.isDestroyed()) {
-      this.primary.webContents.send('student:signal', sessionId, signal);
-    }
+  /** The teacher's screen, one encoded frame at a time, for the primary display's overlay to decode. */
+  sendFrame(sessionId: string, meta: BroadcastFrameMeta, data: Buffer): void {
+    const win = this.primary;
+    if (sessionId !== this.broadcastSessionId || !win || win.isDestroyed() || win.webContents.isLoading()) return;
+    win.webContents.send('student:broadcast-frame', sessionId, meta, data);
   }
 
   pushState(contents: Electron.WebContents): void {
@@ -164,6 +166,15 @@ export class Overlay {
     });
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.webContents.on('will-navigate', (e) => e.preventDefault());
+    // A crashed page would leave a blank window (and no lock message): put fresh ones up.
+    win.webContents.on('render-process-gone', (_e, details) => {
+      if (quitting || details.reason === 'clean-exit') return;
+      console.error(`[overlay] page ${details.reason}; rebuilding`);
+      this.rebuildTimer ??= setTimeout(() => {
+        this.rebuildTimer = null;
+        this.rebuild();
+      }, 500);
+    });
     win.once('ready-to-show', () => {
       win.showInactive();
       if (isPrimary) win.focus();

@@ -16,6 +16,7 @@ const api: TeacherApi = {
   shareScreen: (displayId) => ipcRenderer.invoke('teacher:share-screen', displayId),
   broadcastStart: (target, sessionId) => ipcRenderer.send('teacher:broadcast-start', target, sessionId),
   broadcastStop: () => ipcRenderer.send('teacher:broadcast-stop'),
+  broadcastFrame: (sessionId, meta, data) => ipcRenderer.send('teacher:broadcast-frame', sessionId, meta, data),
   signal: (id, sessionId, signal) => ipcRenderer.send('teacher:signal', id, sessionId, signal),
   message: (target, text) => ipcRenderer.invoke('teacher:message', target, text),
   chat: (id, text) => ipcRenderer.invoke('teacher:chat', id, text),

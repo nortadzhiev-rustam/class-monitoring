@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { RtcSignal } from '../shared/protocol';
+import type { BroadcastFrameMeta, RtcSignal } from '../shared/protocol';
 import type { ChatState, DiscoveredClass, OverlayState, PromptCard, SetupStatus, StudentApi, ViewCommand } from './ipc';
 
 const api: StudentApi = {
@@ -16,6 +16,9 @@ const api: StudentApi = {
     ipcRenderer.on('student:overlay-state', (_e, state: OverlayState) => listener(state));
   },
   broadcastReady: (sessionId) => ipcRenderer.send('student:broadcast-ready', sessionId),
+  onBroadcastFrame: (listener) => {
+    ipcRenderer.on('student:broadcast-frame', (_e, sessionId: string, meta: BroadcastFrameMeta, data: Uint8Array) => listener(sessionId, meta, data));
+  },
   setupInitial: () => ipcRenderer.invoke('student:setup-initial'),
   setupJoin: (details) => ipcRenderer.invoke('student:setup-join', details),
   setupClose: () => ipcRenderer.send('student:setup-close'),

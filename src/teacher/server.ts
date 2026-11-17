@@ -24,6 +24,7 @@ import {
 } from '../shared/protocol';
 import type { FileLink } from '../shared/file-transfer';
 import { acceptStudent, CLOSE_REPLACED, deriveClassKey, type SecureChannel } from '../shared/secure-channel';
+import type { ViewerLink } from './broadcast-relay';
 import type { StudentStatus, StudentSummary, Target, TeacherSettings } from './ipc';
 import { PolicyTable } from './policy';
 
@@ -139,13 +140,13 @@ export class ClassServer extends EventEmitter<ServerEvents> {
     return target.everyone ? [...this.students.keys()] : target.ids.filter((id) => this.students.has(id));
   }
 
-  /** A file-sending handle for one connected student. */
-  fileLink(id: string): FileLink | null {
+  /** A sending handle for one connected student (file transfers, broadcast frames), with its backlog for pacing. */
+  link(id: string): (FileLink & ViewerLink) | null {
     const student = this.students.get(id);
     if (!student) return null;
     const { channel } = student;
     return {
-      send: (msg, payload) => channel.send(msg, payload),
+      send: (msg: TeacherMessage, payload?: Buffer) => channel.send(msg, payload),
       buffered: () => channel.bufferedAmount,
       open: () => channel.isOpen && this.students.get(id) === student,
     };
@@ -187,6 +188,10 @@ export class ClassServer extends EventEmitter<ServerEvents> {
   }
 
   private async onConnection(ws: WebSocket, address: string): Promise<void> {
+    // Without a listener, a socket error (a garbled frame, a reset mid-write) is
+    // thrown in the main process and takes the whole console down. The socket
+    // closes on its own, and its 'close' handler tidies up.
+    ws.on('error', (err) => console.warn(`[server] ${address}: ${err.message}`));
     let channel: SecureChannel<StudentMessage, TeacherMessage>;
     try {
       channel = await acceptStudent(ws, this.classKey, this.config.room);

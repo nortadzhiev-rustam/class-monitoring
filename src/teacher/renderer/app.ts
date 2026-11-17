@@ -189,7 +189,6 @@ api.onEvent((event: TeacherEvent) => {
       break;
     case 'left':
       store.left(event.id);
-      broadcast.studentLeft(event.id);
       viewer.studentLeft(event.id);
       break;
     case 'status':
@@ -202,10 +201,13 @@ api.onEvent((event: TeacherEvent) => {
       grid.showThumb(event.id, event.jpeg);
       break;
     case 'signal':
-      if (!viewer.handleSignal(event.sessionId, event.signal)) broadcast.handleSignal(event.id, event.sessionId, event.signal);
+      viewer.handleSignal(event.sessionId, event.signal);
       break;
-    case 'broadcast-ready':
-      broadcast.connect(event.id, event.sessionId);
+    case 'broadcast-keyframe':
+      broadcast.keyframe();
+      break;
+    case 'broadcast-viewers':
+      broadcast.viewers(event.count);
       break;
     case 'student-error': {
       const s = store.get(event.id);

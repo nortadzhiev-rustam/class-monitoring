@@ -234,7 +234,8 @@ await step('broadcast shows the teacher screen on the student', async () => {
   await page.waitForSelector('#banner:not([hidden])', { timeout: 10_000 });
   let overlay = null;
   await waitFor(async () => (overlay = await primaryOverlay(student)) !== null);
-  await overlay.waitForFunction(() => document.querySelector('#video').videoWidth > 0, null, { timeout: 15_000 });
+  // The student decodes the teacher's one encoded stream and draws it on a canvas.
+  await overlay.waitForFunction(() => Number(document.querySelector('#screen').dataset.frames) > 0, null, { timeout: 15_000 });
   await overlay.waitForTimeout(800);
   await overlay.screenshot({ path: path.join(out, '4-broadcast-on-student.png') });
   await page.click('#broadcast');
@@ -270,7 +271,7 @@ await step(
     if ((await captured()) !== sourceOf[second.id]) throw new Error(`captured ${await captured()}, not screen 2 (${sourceOf[second.id]})`);
     let overlay = null;
     await waitFor(async () => (overlay = await primaryOverlay(student)) !== null);
-    const frames = () => overlay.evaluate(() => document.querySelector('#video').getVideoPlaybackQuality().totalVideoFrames);
+    const frames = () => overlay.evaluate(() => Number(document.querySelector('#screen').dataset.frames ?? 0));
     await waitFor(async () => (await frames()) > 0, 15_000);
     await page.screenshot({ path: path.join(out, '18-pick-screen-banner.png') });
     await overlay.screenshot({ path: path.join(out, '19-broadcast-screen-2.png') });
@@ -667,9 +668,49 @@ await step('the roster survives a teacher restart', async () => {
   if (await page.locator(card('late')).count()) throw new Error('a forgotten student came back');
   await page.waitForSelector('.view-chip:has-text("Table 1")', { timeout: 5000 });
   await page.waitForSelector(`${card('student')} .name:has-text("Ada Lovelace")`);
-  await teacher.close();
 });
 
+// Crash recovery runs last: Playwright can't use a page again once it has crashed.
+await step('a crashed lock screen comes straight back', async () => {
+  await lockTarget('Back in a moment');
+  let overlay = null;
+  await waitFor(async () => (overlay = await primaryOverlay(student)) !== null);
+  await overlay.waitForFunction(() => document.getElementById('message')?.textContent === 'Back in a moment');
+  await student.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()
+      .find((w) => w.webContents.getURL().endsWith('overlay.html'))
+      .webContents.forcefullyCrashRenderer(),
+  );
+  let restored = false;
+  await waitFor(async () => {
+    const fresh = await primaryOverlay(student);
+    const message = fresh && fresh !== overlay ? await fresh.evaluate(() => document.getElementById('message')?.textContent).catch(() => null) : null;
+    return (restored = message === 'Back in a moment');
+  }, 10_000);
+  if (!restored) throw new Error('no lock screen after the crash');
+  await page.click('#unlock');
+  await waitFor(async () => overlayPages(student).length === 0);
+});
+
+await step('a crashed console window reloads and stops showing the screen', async () => {
+  const asks = (await page.locator('#broadcast.pick-screen').count()) > 0;
+  await page.click('#broadcast');
+  if (asks) await page.click('.menu button >> nth=0');
+  let overlay = null;
+  await waitFor(async () => (overlay = await primaryOverlay(student)) !== null);
+  await overlay.waitForFunction(() => Number(document.querySelector('#screen').dataset.frames) > 0, null, { timeout: 15_000 });
+  await teacher.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.forcefullyCrashRenderer());
+  // The student isn't left on a frozen picture, and the console comes back by itself.
+  await waitFor(async () => overlayPages(student).length === 0, 15_000);
+  const inConsole = (script) => teacher.evaluate(({ BrowserWindow }, js) => BrowserWindow.getAllWindows()[0].webContents.executeJavaScript(js), script);
+  const back = await waitFor(async () => (await inConsole("document.querySelectorAll('.card:not(.offline)').length").catch(() => 0)) > 0, 15_000)
+    .then(() => true)
+    .catch(() => false);
+  if (!back) throw new Error('the console did not come back');
+  if (!(await inConsole("document.getElementById('banner').hidden"))) throw new Error('the reloaded console still says it is showing the screen');
+});
+
+await teacher.close();
 await student.close();
 wolSocket.close();
 console.log(failures ? `\n${failures} step(s) failed` : '\nAll steps passed');
