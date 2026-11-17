@@ -64,10 +64,12 @@ export interface Policy {
 
 export const OPEN_POLICY: Policy = { lock: null, broadcast: null, presenter: null, poll: null, register: null, collect: null, apps: null, web: null };
 
-/** The student's browser as seen through the web filter extension. */
+/** The student's browser, as seen by the web filter extension and the student app's address watcher. */
 export interface WebStatus {
   /** The extension is installed and talking to the student app. */
   extension: boolean;
+  /** The student app can read every open browser's address, so the rules apply without the extension. */
+  watching: boolean;
   /** Chrome or Edge is running (checked while website rules are on). */
   browserOpen: boolean;
   url: string | null;

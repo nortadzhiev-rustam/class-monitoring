@@ -12,7 +12,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import dgram from 'node:dgram';
 import { createRequire } from 'node:module';
 import net from 'node:net';
-import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -97,6 +97,8 @@ const studentEnv = (profile, extra = {}) => ({
   CM_USER_DATA: path.join(tmp, profile),
   CM_FILES_DIR: path.join(tmp, profile, 'files'),
   CM_TEST_OPEN: essay,
+  // A file plays the browsers, so website rules never touch this computer's own Safari or Chrome.
+  CM_BROWSERS_FILE: path.join(tmp, profile, 'browsers.json'),
   ...extra,
 });
 const launchStudent = (profile, extra = {}) => electron.launch({ args: ['dist/student/main.js'], env: studentEnv(profile, extra) });
@@ -665,6 +667,59 @@ await step('the web filter bridge carries rules down and the site up (simulated 
   // Extension gone: the site disappears from the card.
   await page.waitForSelector(`${card('student')} .pill:has-text("example.org")`, { state: 'detached', timeout: 10_000 });
   return `${fromAgent.length} messages from the agent`;
+});
+
+await step('without the extension, the address bar is sent to the block page (simulated browser)', async () => {
+  // The student app reads this file instead of the browsers' address bars, and writes the block page into it.
+  const file = path.join(tmp, 'student', 'browsers.json');
+  const show = (address, extra = {}) =>
+    writeFileSync(file, JSON.stringify({ readable: true, tabs: [{ window: 'w1', address, title: 'A page', front: true, editing: false, ...extra }] }));
+  const address = () => JSON.parse(readFileSync(file, 'utf8')).tabs[0].address;
+  const onBlockPage = () => /^http:\/\/127\.0\.0\.1:\d+\/blocked\?site=/.test(address());
+  const blockPage = async () => (await fetch(address())).text();
+  const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  try {
+    show('youtube.com/watch?v=1');
+    await page.click('#web');
+    await page.click('.menu button:has-text("Choose sites")');
+    await page.check('input[name="web-mode"][value="block"]');
+    await page.fill('#web-list', 'youtube.com');
+    await page.uncheck('#web-close-others');
+    await page.click('#web-on');
+    await waitFor(async () => onBlockPage());
+    const page1 = await blockPage();
+    if (!page1.includes('This site is blocked during class') || !page1.includes('<strong>youtube.com</strong>')) throw new Error('the block page does not name the site');
+    // The student app can read the browser, so the card doesn't say "Web filter missing".
+    await page.waitForSelector(`${card('student')} .pill:has-text("Web rules on")`);
+
+    // An allowed site stays open, and the card shows it.
+    show('https://en.wikipedia.org/wiki/Water_cycle');
+    await page.waitForSelector(`${card('student')} .pill:has-text("en.wikipedia.org")`);
+    await pause(2500);
+    if (onBlockPage()) throw new Error('an allowed site was sent to the block page');
+
+    // Text in an address bar the student is typing in is left alone until it stops changing.
+    show('youtube.com', { editing: true });
+    await pause(1500);
+    if (onBlockPage()) throw new Error('half-typed text was judged straight away');
+    await waitFor(async () => onBlockPage());
+
+    // "Block all websites": any site goes to the block page, which says so.
+    show('https://en.wikipedia.org/wiki/Water_cycle');
+    await page.click('#web');
+    await page.click('.menu button:has-text("Block all websites")');
+    await waitFor(async () => onBlockPage());
+    if (!(await blockPage()).includes('Websites are off during class')) throw new Error('the block page does not say all websites are off');
+    await page.waitForSelector(`${card('student')} .pill:has-text("Websites blocked")`);
+
+    // Rules lifted: reloading the block page offers the site again.
+    await page.click('#web');
+    await page.click('.menu button:has-text("Allow all websites")');
+    await waitFor(async () => (await blockPage()).includes('Websites are open again'));
+  } finally {
+    rmSync(file, { force: true });
+  }
+  await page.waitForSelector(`${card('student')} .pill:has-text("en.wikipedia.org")`, { state: 'detached', timeout: 10_000 });
 });
 
 await step('a student with the wrong class key is refused', async () => {

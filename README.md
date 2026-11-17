@@ -42,7 +42,7 @@ A LAN classroom-management app in the spirit of NetSupport School: a **teacher c
 | Open website / app | Opens a link in the default browser or an app by name |
 | Close all apps | **Apps ▾ → Close all apps** asks every open app to quit after a 15-second warning, the same way Cmd+Q or a window's ✕ would, so apps with unsaved work can ask the student first. Finder, File Explorer and ClassMonitor stay open |
 | Block apps | **Apps ▾ → Block apps**: named apps (with `*` wildcards) are closed whenever they start |
-| Websites | Block all websites in one go, or block-list / allow-list sites, in Chrome and Edge via the ClassMonitor Web Filter extension |
+| Websites | Block all websites in one go, or block-list / allow-list sites. The student app watches the browser's address bar and sends blocked sites to a "blocked" page, with nothing to install; the optional ClassMonitor Web Filter extension also stops them before they load |
 | Power | Log off, restart or shut down after a 15-second warning; Wake-on-LAN for offline computers |
 
 **Who does an action apply to?** Select cards (corner checkbox, Cmd/Ctrl-click, Shift-click) and actions go to the selection; with nothing selected they go to the group you're viewing, or everyone. The bar above the toolbar always says which. Lock, show my screen, polls, the register, collecting work, blocked apps and website rules also reach students who join late or reconnect.
@@ -115,14 +115,21 @@ The icons are drawn in `build/icon-teacher.svg` and `build/icon-student.svg`. Af
    Optional: `"teacherHost": "10.0.4.20"` if the network blocks UDP broadcast, `"displayName"` to override the computer name, `"extensionIds"` for the published web filter (below). Make the file readable by students but writable only by admins.
 
    **Save student.json…** in the teacher's Class settings writes this file for you. The Windows student installer creates `C:\ProgramData\ClassMonitor` (admins can write, students only read). File Explorer hides `ProgramData`: paste the path into the address bar. On macOS, create `/Library/Application Support/ClassMonitor` yourself.
-3. **macOS students:** push a PPPC profile through MDM that grants ClassMonitor Student **Screen Recording**, **Accessibility** (remote control) and **Automation** of System Events and loginwindow (power controls). Without it each student approves the prompts by hand.
+3. **macOS students:** push a PPPC profile through MDM that grants ClassMonitor Student **Screen Recording**, **Accessibility** (remote control) and **Automation** of System Events and loginwindow (power controls) and of Google Chrome, Microsoft Edge and Safari (website rules). Without it each student approves the prompts by hand.
 4. **Network:** students listen on UDP **47800** for teacher beacons; the teacher accepts TCP **47801**. The Windows installers add these firewall rules (domain and private profiles). Wake-on-LAN also needs it turned on in each PC's firmware and network card settings.
 
 The student agent starts at login and has no way to quit it from the app (no menu, no Dock icon). It never blocks logging out or shutting down. On Windows the installer and uninstaller stop it themselves, so updating or removing it (Settings → Apps, admin rights needed) doesn't ask anyone to close it.
 
-### Website blocking: the Chrome/Edge extension
+### Website blocking
 
-Website rules are applied by the **ClassMonitor Web Filter** extension, which talks to the student app on the same computer. The student app registers itself with Chrome and Edge for the logged-in user automatically. What you do once:
+**Without installing anything.** While website rules are on, the student app reads the address each browser window shows, every second, and sends a window that opened a blocked site to a "blocked" page it serves on that computer (`127.0.0.1`). In allow-list mode that page links to the allowed sites. This is how NetSupport-style classroom tools work:
+
+- **Windows:** Chrome, Edge, Firefox, Brave, Vivaldi and Opera, through UI Automation (`native/windows/browser-helper.ps1`). To change the address the window comes to the front for a moment; one that can't is closed.
+- **macOS:** Chrome, Edge, Brave, Vivaldi, Chromium and Safari, through AppleScript. Each student allows ClassMonitor Student to control each browser the first time (or the PPPC profile above does). Firefox can't be read on macOS.
+
+It sees only the tab on screen in each window, catches a site a moment after it starts opening, doesn't stop sites shown inside other pages, and waits while the student is typing in the address bar. Cards say **Web filter missing** where Chrome or Edge is open but the student app can't read it (on macOS: Automation not allowed).
+
+**The extension: stronger, optional.** The **ClassMonitor Web Filter** extension blocks sites before they load, frames included, in every tab. It talks to the student app on the same computer; both can run together. The student app registers itself with Chrome and Edge for the logged-in user automatically. On Windows PCs that aren't managed by a domain or Intune, Chrome and Edge only install extensions automatically from their stores. What you do once:
 
 1. `npm run pack:extension` makes `release/classmonitor-web-filter-<version>.zip`.
 2. Publish it **unlisted** on the [Chrome Web Store](https://chrome.google.com/webstore/devconsole) (one-off $5 developer fee) and on [Microsoft Edge Add-ons](https://partner.microsoft.com/dashboard/microsoftedge/) (free). Each store gives the extension an ID.
@@ -133,7 +140,7 @@ Website rules are applied by the **ClassMonitor Web Filter** extension, which ta
 
 **Websites ▾ → Block all websites** stops every page from opening in Chrome and Edge (an allow-list with nothing on it); **Allow all websites** lifts it. It covers browsers only: other apps that use the internet keep working, so pair it with **Apps ▾ → Block apps** if needed.
 
-While rules are on, Firefox, Safari and other browsers the extension can't reach are closed (you can switch this off under **Choose sites…**, and Block all websites follows that choice). Cards say **Web filter missing** where Chrome or Edge is open without the extension.
+While rules are on, browsers other than Chrome and Edge (Firefox, Safari, Opera…) are closed (you can switch this off under **Choose sites…**, and Block all websites follows that choice; the address watcher then covers the ones it can read).
 
 To try it before publishing: load `dist/extension` unpacked (chrome://extensions → Developer mode → Load unpacked) and start the student app once with `CM_REGISTER_HOST=1`, which registers the development build with Chrome and Edge for your user.
 
@@ -157,13 +164,13 @@ To try it before publishing: load `dist/extension` unpacked (chrome://extensions
 - **Files** travel in 256 KB chunks inside the encrypted channel, checksum-verified, with safe file names and no overwriting.
 - **Screens** are encoded once, by the computer whose screen it is, in hardware where possible (WebCodecs H.264, `src/renderer-shared/screen-encoder.ts`), and sent as frames over the encrypted links; `screen-decoder.ts` draws them. For **Show my screen** and **Show to class**, `src/shared/frame-relay.ts` on the teacher's computer sends the same frames to every student, so the work is the same for any class size, and a student whose link backs up skips ahead to the next keyframe instead of holding back the others. Remote view uses the same relay on the student's computer to pace its stream to the teacher; if live video can't start there (`src/student/session.ts`), it sends still JPEG pictures through the same path.
 - **Remote control** maps 0..1 positions on the viewed monitor to desktop coordinates, injected by `native/macos/InputHelper.swift` (CGEvent) or `native/windows/input-helper.ps1` (SendInput across the virtual desktop).
-- **Web filter**: the extension (`src/extension/`) uses declarativeNetRequest; the browser starts the student app as its native-messaging host (`src/student/native-host.ts`), which relays to the agent over a local socket guarded by a per-install secret.
+- **Web filter**: the address watcher (`src/student/web-watch.ts`) reads each browser window's address once a second (UI Automation on Windows, AppleScript on macOS) and sends blocked sites to `src/student/block-page.ts`, a page served on `127.0.0.1` only. The extension (`src/extension/`) uses declarativeNetRequest; the browser starts the student app as its native-messaging host (`src/student/native-host.ts`), which relays to the agent over a local socket guarded by a per-install secret.
 
 ## Known limits
 
 - **Not yet run on Windows.** Everything is tested end to end on macOS. The Windows paths are written but unverified: the input helper (including multi-monitor and high-DPI coordinates), `tasklist`-based app blocking, `shutdown`, native-messaging registration in the registry, and installer firewall rules.
 - **Multi-monitor** compositing, the screen switcher and control on a second screen are unit-tested, but the end-to-end step was skipped on the single-display development Mac.
-- **The web filter** has been exercised through its native-messaging bridge, not yet inside a real Chrome or Edge.
+- **The web filter** extension has been exercised through its native-messaging bridge, not yet inside a real Chrome or Edge. The address watcher's Windows helper (UI Automation) hasn't run on Windows yet; the end-to-end suite drives the watcher through a simulated browser.
 - **Lock screen and shown screen** block the keyboard and mouse with the student's own rights. On Windows, low-level hooks (`native/windows/lock-helper.ps1`) swallow every key including the Windows key and Alt+Tab, and the taskbar is hidden; Ctrl+Alt+Del can't be blocked, so a student can still reach Task Manager from there unless Group Policy turns it off. On macOS an event tap does the same and needs the **Accessibility** permission (the same one remote control needs); without it only kiosk mode protects the lock screen. Remote control can't drive elevated windows or UAC prompts; that needs a SYSTEM service.
 - **App blocking and power** act with the student's own rights: they can only close the student's own programs, and power actions need the OS to allow standard users to restart (the default on Windows client editions).
 - **Showing a screen to the class** encodes it once but sends it to each student separately, through the teacher's computer: its link carries up to ~30 Mbps for a full class (usually far less for screen content), fine on wired Ethernet. A teacher on busy Wi-Fi, or much larger rooms, would need multicast.

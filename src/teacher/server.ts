@@ -287,6 +287,7 @@ export class ClassServer extends EventEmitter<ServerEvents> {
         const url = typeof msg.url === 'string' && /^https?:\/\//.test(msg.url) ? msg.url.slice(0, 2000) : null;
         this.emit('web', id, {
           extension: msg.extension === true,
+          watching: msg.watching === true,
           browserOpen: msg.browserOpen === true,
           url,
           title: url && typeof msg.title === 'string' ? msg.title.slice(0, 200) : null,

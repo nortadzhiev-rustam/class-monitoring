@@ -40,6 +40,39 @@ export function normaliseDomain(raw: string): string | null {
   return text;
 }
 
+/**
+ * The page a browser's address bar shows, as a URL: "youtube.com/watch?v=1"
+ * (Chrome hides https:// and www.), "https://www.bbc.co.uk/news". Null for
+ * anything that isn't a web page: chrome:// and about: pages, files, or words
+ * being typed into the bar.
+ */
+export function addressUrl(text: string): URL | null {
+  const value = String(text ?? '').trim();
+  if (!value || value.length > 4000 || /\s/.test(value)) return null;
+  let url: URL;
+  try {
+    if (/^https?:\/\//i.test(value)) url = new URL(value);
+    // Some other scheme (chrome://, edge://, file://, about:blank, data:…): not a website.
+    // "localhost:3000/x" has a colon too, but a port number after it.
+    else if (/^[a-z][a-z\d+.-]*:(\/\/|[^\d])/i.test(value)) return null;
+    else url = new URL(`https://${value}`);
+  } catch {
+    return null;
+  }
+  const host = url.hostname;
+  // "minecraft" typed without a dot is a search, not a site.
+  if (host !== 'localhost' && !host.includes('.') && !host.startsWith('[')) return null;
+  return url;
+}
+
+/** Whether the rules stop this site, the same way the extension's rules do: a listed domain covers its subdomains. */
+export function blocksHost(rules: WebRules | null, host: string): boolean {
+  if (!rules) return false;
+  const h = host.toLowerCase().replace(/\.$/, '');
+  const listed = rules.domains.some((d) => h === d || h.endsWith(`.${d}`));
+  return rules.mode === 'block' ? listed : !listed;
+}
+
 /** Rules from the other side are untrusted: keep only what makes sense. */
 export function cleanRules(raw: unknown): WebRules | null {
   if (!raw || typeof raw !== 'object') return null;
