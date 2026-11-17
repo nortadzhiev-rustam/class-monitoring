@@ -7,16 +7,17 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { configureApp, shareScreenWithoutPicker } from '../shared/electron-setup';
-import { LIMITS, type Platform, type Policy, type RtcSignal, type StudentInfo, type TeacherMessage } from '../shared/protocol';
+import { LIMITS, OPEN_POLICY, type Platform, type Policy, type RtcSignal, type StudentInfo, type TeacherMessage } from '../shared/protocol';
 import { OTHER_BROWSERS } from '../shared/web-rules';
 import { setBlockedApps } from './app-blocker';
 import { scheduleCloseApps } from './close-apps';
-import { initChat, openChat, receiveChat, refreshChat, resetChat } from './chat';
+import { chatUnread, initChat, openChat, receiveChat, refreshChat, resetChat } from './chat';
 import { isManagedConfig, loadStudentConfig, type StudentConfig } from './config';
 import { TeacherLink } from './connection';
-import { handleFileMessage, resetFiles, showCollect } from './files';
-import { handNote, lowerHand } from './hand';
+import { handInWork, handleFileMessage, resetFiles, showCollect } from './files';
+import { handNote, lowerHand, raiseHand } from './hand';
 import { restoreAfterCrash } from './input-lock';
+import type { ToolbarState } from './ipc';
 import { openApp, openUrl } from './launch';
 import { isNativeHostLaunch, runNativeHost } from './native-host';
 import { Overlay } from './overlay';
@@ -27,6 +28,7 @@ import * as session from './session';
 import { canOfferSetup, confirmUserConfig, initSetup, openSetup, sendSetupStatus } from './setup';
 import { changed, onChange, send, state } from './state';
 import { configure as configureThumbnails, startThumbnails } from './thumbnails';
+import { initToolbar, updateToolbar } from './toolbar';
 import { createTray, popUpTray, updateTray } from './tray';
 import { registerNativeHost, reportWebStatus, setWebRules, startWebBridge } from './web';
 
@@ -39,6 +41,8 @@ else if (!app.requestSingleInstanceLock()) app.exit(0);
 
 const preload = path.join(__dirname, 'preload.js');
 let overlay: Overlay;
+/** What the teacher has switched on for this computer. */
+let policy: Policy = OPEN_POLICY;
 
 function studentId(): string {
   const file = path.join(app.getPath('userData'), 'student-id');
@@ -79,6 +83,23 @@ function studentInfo(id: string): StudentInfo {
   };
 }
 
+/** The toolbar's contents; null hides it (no teacher, or the lock screen or the teacher's screen is up). */
+function toolbarState(): ToolbarState | null {
+  const teacher = state.teacher;
+  if (!teacher || overlay.locked || overlay.broadcastSession) return null;
+  return {
+    teacher: teacher.name,
+    room: teacher.room,
+    handRaised: handNote() !== null,
+    unread: chatUnread(),
+    collect: policy.collect?.title ?? null,
+    viewing: session.viewing(),
+    controlled: session.controlled(),
+    webLimited: policy.web !== null,
+    appsBlocked: policy.apps !== null,
+  };
+}
+
 function reportStatus(): void {
   send({ type: 'status', locked: overlay.locked, viewing: session.viewing(), controlled: session.controlled(), hand: handNote() });
 }
@@ -86,7 +107,8 @@ function reportStatus(): void {
 // ---------------------------------------------------------------- teacher commands
 
 /** Brings this computer in line with the teacher's policy; safe to apply repeatedly. */
-function applyPolicy(policy: Policy): void {
+function applyPolicy(next: Policy): void {
+  policy = next;
   if (policy.lock !== null) overlay.lock(policy.lock || 'Your teacher has locked this screen.');
   else if (overlay.locked) overlay.unlock();
   if (policy.broadcast) overlay.startBroadcast(policy.broadcast);
@@ -162,7 +184,11 @@ function onTeacherMessage(msg: TeacherMessage, payload: Buffer | undefined): voi
       break;
     case 'signal':
       if (session.owns(msg.sessionId)) session.relaySignal(msg.sessionId, msg.signal);
-      else overlay.sendSignal(msg.sessionId, msg.signal);
+      break;
+    case 'broadcast-frame':
+      if (payload && typeof msg.codec === 'string' && typeof msg.timestamp === 'number') {
+        overlay.sendFrame(msg.sessionId, { codec: msg.codec.slice(0, 40), key: msg.key === true, timestamp: msg.timestamp }, payload);
+      }
       break;
     case 'message':
       showPrompt({
@@ -209,6 +235,7 @@ function resetSession(): void {
   // Cards that only make sense while the teacher is there go away with them.
   removePrompts((c) => c.kind === 'poll' || c.kind === 'sign-in' || c.kind === 'collect');
   resetFiles();
+  policy = OPEN_POLICY;
   state.teacher = null;
   changed();
 }
@@ -248,8 +275,7 @@ function registerIpc(): void {
   const fromOverlay = (e: IpcMainEvent) => overlay.owns(e.sender);
 
   ipcMain.on('student:signal', (e, sessionId: string, signal: RtcSignal) => {
-    const allowed = session.isAgent(e.sender) ? session.owns(sessionId) : fromOverlay(e) && sessionId === overlay.broadcastSession;
-    if (allowed) send({ type: 'signal', sessionId, signal });
+    if (session.isAgent(e.sender) && session.owns(sessionId)) send({ type: 'signal', sessionId, signal });
   });
   ipcMain.on('student:view-error', (e, sessionId: string, message: string) => {
     if (!session.isAgent(e.sender)) return;
@@ -284,6 +310,13 @@ app.whenReady().then(() => {
   registerIpc();
   initPrompts(preload);
   initChat(preload);
+  initToolbar(preload, (action) => {
+    if (action === 'hand') {
+      if (handNote() !== null) lowerHand();
+      else raiseHand();
+    } else if (action === 'chat') openChat();
+    else handInWork();
+  });
   initSetup({ preload, startLink });
   session.createAgentWindow(preload);
   createTray();
@@ -291,6 +324,7 @@ app.whenReady().then(() => {
     reportStatus();
     updateTray();
     refreshChat();
+    updateToolbar(toolbarState());
   });
   // Monitors plugged in, removed or rearranged: the teacher's thumbnail and screen list follow.
   const displaysChanged = () => state.link?.connected && send({ type: 'info', info: studentInfo(studentId()) });

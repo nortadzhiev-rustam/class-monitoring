@@ -19,7 +19,8 @@ A LAN classroom-management app in the spirit of NetSupport School: a **teacher c
 | Feature | How it works |
 | --- | --- |
 | Messages | A pop-up on students' screens until they click OK |
-| Help requests | Students raise a hand from the tray or chat; you get a Help queue and a "Needs help" badge |
+| Student toolbar | A slim bar at the top of each student's screen while you're connected: who's connected, Raise hand, Chat (with unread count), Hand in work while you're collecting, and whether you're watching or controlling, or limiting websites or apps. It tucks into a small tab, slides out on hover, never takes the keyboard, and steps aside for the lock screen |
+| Help requests | Students raise a hand from the toolbar, the tray or chat; you get a Help queue and a "Needs help" badge |
 | Chat | One-to-one chat; the student's window opens when you write, without stealing their focus |
 | Quick polls | Preset or custom answers, live results with names, each answer shown on the card |
 
@@ -85,6 +86,12 @@ npm run test:e2e   # both apps, end to end, on this computer
 
 The end-to-end suite starts a teacher console and several student agents and exercises every feature. Anything that would affect the computer running it is simulated: remote control, opening sites and apps, and power actions run in dry-run mode, the web filter extension is played by the test speaking Chrome's native-messaging protocol, and Wake-on-LAN packets go to a test port. Screenshots land in `tests/output/`. The multi-monitor steps only run when the computer has two or more displays.
 
+```bash
+npm run test:load  # "Show my screen" to 24 students on this computer
+```
+
+The load test starts a console and 24 student agents (`node tests/load-broadcast.mjs 30` for another class size), shows the teacher's screen to all of them and reports each student's frame rate and how responsive the console stays. Their windows open on screen while it runs.
+
 ### App icons
 
 The icons are drawn in `build/icon-teacher.svg` and `build/icon-student.svg`. After changing one, run `npm run icons` to render the 1024×1024 PNGs that the `.app`, `.dmg` and Windows installers are built with.
@@ -138,15 +145,16 @@ To try it before publishing: load `dist/extension` unpacked (chrome://extensions
  │ policy.ts   per-student    │ ◀── WebSocket ─ │ main.ts         applies the policy   │
  │             lock, poll, …  │   (encrypted)   │ overlay, prompts, chat, files, power │
  │ roster.ts   known students │                 │ app-blocker, input ──▶ native helper │
- │ files.ts    send / collect │ ◀═══ WebRTC ══▶ │ renderer/agent.ts   (screens out)    │
+ │ files.ts    send / collect │ ◀══ WebRTC ════ │ renderer/agent.ts   (screens out)    │
  │ renderer/   grid, panels   │                 │ web.ts ◀── socket ── native host ◀── │
  └────────────────────────────┘                 │                     Chrome extension │
                                                 └──────────────────────────────────────┘
 ```
 
-- **Security** (`src/shared/secure-channel.ts`): teacher and student prove to each other that they know the class key (HMAC challenge-response), so a rogue console can't control students and a rogue agent can't join. Every message after that is AES-256-GCM encrypted with per-session keys, with replay protection. WebRTC media is DTLS-SRTP encrypted, and its fingerprints travel inside the encrypted channel. Anything a student sends (names, files, status) is validated by the console before use.
+- **Security** (`src/shared/secure-channel.ts`): teacher and student prove to each other that they know the class key (HMAC challenge-response), so a rogue console can't control students and a rogue agent can't join. Every message after that is AES-256-GCM encrypted with per-session keys, with replay protection; that includes the teacher's screen when shown to the class. Remote view's WebRTC media is DTLS-SRTP encrypted, and its fingerprints travel inside the encrypted channel. Anything a student sends (names, files, status) is validated by the console before use.
 - **Policy** (`src/teacher/policy.ts`): what the teacher has switched on for each student (lock, broadcast, poll, register, collection, blocked apps, website rules) is sent whole whenever it changes and on every connect, so late joiners and reconnects match their class. If the teacher disconnects, the student drops all of it.
 - **Files** travel in 256 KB chunks inside the encrypted channel, checksum-verified, with safe file names and no overwriting.
+- **Show my screen** encodes the teacher's screen once, in hardware where possible (WebCodecs H.264, `src/teacher/renderer/screen-encoder.ts`), and `src/teacher/broadcast-relay.ts` sends the same frames to every student over their encrypted link; students decode and draw them. The teacher's computer does the same work for any class size. A student whose link backs up skips ahead to the next keyframe instead of holding back the others.
 - **Remote control** maps 0..1 positions on the viewed monitor to desktop coordinates, injected by `native/macos/InputHelper.swift` (CGEvent) or `native/windows/input-helper.ps1` (SendInput across the virtual desktop).
 - **Web filter**: the extension (`src/extension/`) uses declarativeNetRequest; the browser starts the student app as its native-messaging host (`src/student/native-host.ts`), which relays to the agent over a local socket guarded by a per-install secret.
 
@@ -157,6 +165,6 @@ To try it before publishing: load `dist/extension` unpacked (chrome://extensions
 - **The web filter** has been exercised through its native-messaging bridge, not yet inside a real Chrome or Edge.
 - **Lock screen and shown screen** block the keyboard and mouse with the student's own rights. On Windows, low-level hooks (`native/windows/lock-helper.ps1`) swallow every key including the Windows key and Alt+Tab, and the taskbar is hidden; Ctrl+Alt+Del can't be blocked, so a student can still reach Task Manager from there unless Group Policy turns it off. On macOS an event tap does the same and needs the **Accessibility** permission (the same one remote control needs); without it only kiosk mode protects the lock screen. Remote control can't drive elevated windows or UAC prompts; that needs a SYSTEM service.
 - **App blocking and power** act with the student's own rights: they can only close the student's own programs, and power actions need the OS to allow standard users to restart (the default on Windows client editions).
-- **Broadcast** encodes one stream per student: fine for about 30 students on wired Ethernet; larger rooms or Wi-Fi need an SFU or multicast.
+- **Broadcast** is encoded once but sent to each student separately: the teacher's link carries up to ~30 Mbps for a full class (usually far less for screen content), fine on wired Ethernet. A teacher on busy Wi-Fi, or much larger rooms, would need multicast.
 - Anyone who can read `student.json` has the class key. Use a different key per room and keep the file admin-writable.
 - Apps aren't code-signed yet, so Windows SmartScreen and macOS Gatekeeper warn on first launch.

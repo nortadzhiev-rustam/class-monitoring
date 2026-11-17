@@ -1,7 +1,7 @@
 // Types shared by the teacher's main process, preload and renderer.
 
 import type { DisplayInfo } from '../shared/displays';
-import type { Collect, InputEvent, Platform, Policy, Poll, PowerAction, RtcSignal, StudentInfo, WebStatus } from '../shared/protocol';
+import type { BroadcastFrameMeta, Collect, InputEvent, Platform, Policy, Poll, PowerAction, RtcSignal, StudentInfo, WebStatus } from '../shared/protocol';
 import type { WebRules } from '../shared/web-rules';
 
 export interface StudentStatus {
@@ -99,7 +99,10 @@ export type TeacherEvent =
   | { type: 'policy'; id: string; policy: Policy }
   | { type: 'thumb'; id: string; jpeg: Uint8Array }
   | { type: 'signal'; id: string; sessionId: string; signal: RtcSignal }
-  | { type: 'broadcast-ready'; id: string; sessionId: string }
+  /** A student needs a keyframe of the broadcast to start (or restart) showing it. */
+  | { type: 'broadcast-keyframe' }
+  /** How many students are showing the broadcast. */
+  | { type: 'broadcast-viewers'; count: number }
   | { type: 'student-error'; id: string; sessionId?: string; message: string }
   /** A computer tried to join but runs a different ClassMonitor version. */
   | { type: 'version-mismatch'; address: string }
@@ -135,6 +138,8 @@ export interface TeacherApi {
   shareScreen(displayId: string | null): Promise<void>;
   broadcastStart(target: Target, sessionId: string): void;
   broadcastStop(): void;
+  /** One encoded frame of the teacher's screen, for every student watching. */
+  broadcastFrame(sessionId: string, meta: BroadcastFrameMeta, data: Uint8Array): void;
   signal(id: string, sessionId: string, signal: RtcSignal): void;
   /** Pops up a message on the targets' screens; resolves to how many received it. */
   message(target: Target, text: string): Promise<number>;

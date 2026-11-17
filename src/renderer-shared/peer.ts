@@ -1,4 +1,5 @@
-// Thin wrapper around RTCPeerConnection for one-way screen streams on a LAN.
+// Thin wrapper around RTCPeerConnection for one-way screen streams on a LAN
+// (remote view: a student's screen to the teacher).
 // The side that owns the video track calls `offer()`; the other side answers.
 // Signals are applied strictly in order, so ICE candidates never race ahead of
 // the remote description.
@@ -8,8 +9,8 @@ import type { RtcSignal } from '../shared/protocol';
 /**
  * Offers H.264 ahead of VP8. Chromium encodes H.264 on the graphics chip's
  * media engine where there is one (VideoToolbox on Macs), while VP8 is always
- * software; with a stream per student that is the difference between a few
- * percent and a whole CPU core. Both sides run the same app, so H.264 is
+ * software: the difference between a few percent and a whole CPU core on the
+ * student's computer. Both sides run the same app, so H.264 is
  * always accepted; if it's missing the browser's default (VP8) is used.
  */
 function preferH264(transceiver: RTCRtpTransceiver): void {
@@ -40,16 +41,6 @@ export class Peer {
       if (transceiver) preferH264(transceiver);
     }
     this.setMaxBitrate(maxBitrate);
-  }
-
-  /** Sends another screen on the same connection, without renegotiating (the teacher switched monitors). */
-  replaceScreen(stream: MediaStream): void {
-    const track = stream.getVideoTracks()[0];
-    if (!track) return;
-    track.contentHint = 'detail';
-    for (const sender of this.pc.getSenders()) {
-      if (sender.track?.kind === 'video') void sender.replaceTrack(track).catch((err) => console.warn('[peer] screen not replaced', err));
-    }
   }
 
   /** Caps the video this side sends; can be changed while streaming. */

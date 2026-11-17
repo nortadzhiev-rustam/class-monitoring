@@ -40,7 +40,7 @@ export class TeacherFiles {
   private async sendTo(id: string, files: string[], batchId: string): Promise<void> {
     for (const file of files) {
       const transfer: Transfer = { transferId: randomUUID(), batchId, id, name: path.basename(file), size: 0, sent: 0, state: 'sending' };
-      const link = this.server.fileLink(id);
+      const link = this.server.link(id);
       if (!link) {
         this.update(transfer, { state: 'failed', error: 'went offline' });
         continue;
@@ -92,7 +92,7 @@ export class TeacherFiles {
 
   handle(id: string, msg: FileMessage, payload: Buffer | undefined): void {
     const reply = (transferId: string, ok: boolean, error?: string) =>
-      this.server.fileLink(id)?.send({ type: 'file-ack', transferId, ok, ...(error ? { error } : {}) });
+      this.server.link(id)?.send({ type: 'file-ack', transferId, ok, ...(error ? { error } : {}) });
 
     switch (msg.type) {
       case 'file-ack': {

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; media-src 'self' blob: mediastream:; style-src 'self'; script-src 'self'">
+        content="default-src 'self'; style-src 'self'; script-src 'self'">
   <title>ClassMonitor</title>
   <link rel="stylesheet" href="overlay.css">
 </head>
@@ -17,7 +17,7 @@
   </section>
 
   <section class="broadcast">
-    <video id="video" autoplay muted playsinline></video>
+    <canvas id="screen"></canvas>
     <div class="waiting" id="waiting">Connecting to <span class="teacher-name">your teacher</span>'s screen…</div>
     <div class="badge"><span class="live"></span><span><span class="teacher-name">Teacher</span>'s screen</span></div>
   </section>

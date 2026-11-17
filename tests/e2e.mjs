@@ -73,6 +73,19 @@ async function primaryOverlay(app) {
   }
   return null;
 }
+/** The student's toolbar window, and whether it's showing. */
+const toolbar = () => pageOf(student, 'toolbar.html');
+const toolbarVisible = () =>
+  student.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().endsWith('toolbar.html'))?.isVisible() ?? false);
+/** Puts the pointer on the toolbar (top centre of its window): it slides out and stays out. */
+async function openToolbar() {
+  const bar = toolbar();
+  const width = await bar.evaluate(() => window.innerWidth);
+  await bar.mouse.move(width / 2, 6);
+  await bar.waitForSelector('#dock[data-open="true"]', { state: 'attached' });
+  await bar.waitForTimeout(300); // the slide
+  return bar;
+}
 /** The id a student agent saved in its profile folder, to find its card. */
 const idOf = (profile) => readFileSync(path.join(tmp, profile, 'student-id'), 'utf8').trim();
 /** A freshly launched agent writes its id shortly after starting. */
@@ -138,6 +151,38 @@ await step(
   { soft: true },
 );
 
+await step('a toolbar at the top of the student screen shows the teacher and the tools', async () => {
+  await waitFor(async () => Boolean(toolbar()));
+  const bar = toolbar();
+  await bar.waitForFunction(() => document.getElementById('room')?.textContent === 'E2E Room');
+  const win = await student.evaluate(({ BrowserWindow, screen }) => {
+    const w = BrowserWindow.getAllWindows().find((b) => b.webContents.getURL().endsWith('toolbar.html'));
+    return { bounds: w.getBounds(), area: screen.getPrimaryDisplay().workArea, visible: w.isVisible(), focusable: w.isFocusable() };
+  });
+  const { bounds, area } = win;
+  if (!win.visible || win.focusable) throw new Error(`visible: ${win.visible}, can take focus: ${win.focusable}`);
+  if (bounds.y !== area.y || Math.abs(bounds.x + bounds.width / 2 - (area.x + area.width / 2)) > 1) throw new Error(`placed at ${JSON.stringify(bounds)}`);
+  // Out when the teacher connects, then tucked away; the pointer brings it back.
+  await bar.waitForSelector('#dock[data-open="false"]', { state: 'attached', timeout: 10_000 });
+  await openToolbar();
+  await bar.locator('#bar').screenshot({ path: path.join(out, '21-student-toolbar.png') });
+  await bar.click('#hand');
+  await page.waitForSelector(`${card('student')} .pill.hand`, { timeout: 10_000 });
+  await bar.waitForSelector('#hand[aria-pressed="true"]', { state: 'attached' });
+  await bar.click('#hand');
+  await page.waitForSelector(`${card('student')} .pill.hand`, { state: 'detached', timeout: 10_000 });
+  await bar.click('#chat');
+  await waitFor(async () => Boolean(pageOf(student, 'chat.html')));
+  await student.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().endsWith('chat.html'))?.close());
+  // The lock screen covers everything; the toolbar steps aside until it's gone.
+  await lockTarget();
+  await waitFor(async () => !(await toolbarVisible()));
+  await page.click('#unlock');
+  await waitFor(toolbarVisible);
+  await waitFor(async () => overlayPages(student).length === 0);
+  return `${bounds.width}×${bounds.height} at the top centre of the main screen`;
+});
+
 await step('locking everyone shows the message on the student', async () => {
   await lockTarget('Pens down, eyes up');
   await page.waitForSelector('.card.locked', { timeout: 10_000 });
@@ -165,6 +210,8 @@ await step('remote view streams the student screen', async () => {
   await page.hover('.card .screen');
   await page.click('.card [data-action="view"]');
   await page.waitForFunction(() => document.querySelector('#viewer-video').videoWidth > 0, null, { timeout: 15_000 });
+  // The student is told, on the toolbar.
+  await toolbar().waitForSelector('.chip.viewing', { state: 'attached', timeout: 5000 });
   const size = await page.evaluate(() => {
     const v = document.querySelector('#viewer-video');
     return `${v.videoWidth}×${v.videoHeight}`;
@@ -177,6 +224,7 @@ await step('remote view streams the student screen', async () => {
 await step('remote control forwards mouse and keyboard (dry run)', async () => {
   await page.click('#viewer-control');
   await page.waitForSelector('.card.controlled', { state: 'attached', timeout: 10_000 });
+  await toolbar().waitForSelector('.chip.controlled', { state: 'attached', timeout: 5000 });
   const box = await page.locator('#stage').boundingBox();
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   // Shift+click then type: the student must see these in exactly this order.
@@ -243,7 +291,8 @@ await step('broadcast shows the teacher screen on the student', async () => {
   await page.waitForSelector('#banner:not([hidden])', { timeout: 10_000 });
   let overlay = null;
   await waitFor(async () => (overlay = await primaryOverlay(student)) !== null);
-  await overlay.waitForFunction(() => document.querySelector('#video').videoWidth > 0, null, { timeout: 15_000 });
+  // The student decodes the teacher's one encoded stream and draws it on a canvas.
+  await overlay.waitForFunction(() => Number(document.querySelector('#screen').dataset.frames) > 0, null, { timeout: 15_000 });
   await overlay.waitForTimeout(800);
   await overlay.screenshot({ path: path.join(out, '4-broadcast-on-student.png') });
   await page.click('#broadcast');
@@ -279,7 +328,7 @@ await step(
     if ((await captured()) !== sourceOf[second.id]) throw new Error(`captured ${await captured()}, not screen 2 (${sourceOf[second.id]})`);
     let overlay = null;
     await waitFor(async () => (overlay = await primaryOverlay(student)) !== null);
-    const frames = () => overlay.evaluate(() => document.querySelector('#video').getVideoPlaybackQuality().totalVideoFrames);
+    const frames = () => overlay.evaluate(() => Number(document.querySelector('#screen').dataset.frames ?? 0));
     await waitFor(async () => (await frames()) > 0, 15_000);
     await page.screenshot({ path: path.join(out, '18-pick-screen-banner.png') });
     await overlay.screenshot({ path: path.join(out, '19-broadcast-screen-2.png') });
@@ -406,7 +455,9 @@ await step('collected work lands in the teacher\'s folder', async () => {
   await page.click('#text-ok');
   const prompts = pageOf(student, 'prompts.html');
   await prompts.waitForSelector('.card.collect:has-text("Essay draft")', { timeout: 10_000 });
-  await prompts.click('.card.collect .btn.primary');
+  // Handed in from the toolbar; the collection card shows it too.
+  const bar = await openToolbar();
+  await bar.click('#hand-in');
   await prompts.waitForSelector('.card.collect li.ok:has-text("essay.txt")', { timeout: 10_000 });
   await page.waitForSelector('#collect-count:has-text("1 of 1 student handed in")', { timeout: 10_000 });
   await page.screenshot({ path: path.join(out, '14-collecting.png') });
@@ -416,6 +467,7 @@ await step('collected work lands in the teacher\'s folder', async () => {
   if (readFileSync(file, 'utf8') !== readFileSync(essay, 'utf8')) throw new Error('the collected file differs');
   await page.click('#collect-end');
   await prompts.waitForSelector('.card.collect', { state: 'detached', timeout: 10_000 });
+  await bar.waitForSelector('#hand-in', { state: 'hidden' });
   return path.relative(tmp, file);
 });
 
@@ -724,9 +776,49 @@ await step('the card order survives the restart, and Sort by name resets it', as
   const names = await page.$$eval('#grid .card .name', (els) => els.map((el) => el.textContent));
   const sorted = [...names].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
   if (names.join() !== sorted.join()) throw new Error(`not in name order: ${names.join(', ')}`);
-  await teacher.close();
 });
 
+// Crash recovery runs last: Playwright can't use a page again once it has crashed.
+await step('a crashed lock screen comes straight back', async () => {
+  await lockTarget('Back in a moment');
+  let overlay = null;
+  await waitFor(async () => (overlay = await primaryOverlay(student)) !== null);
+  await overlay.waitForFunction(() => document.getElementById('message')?.textContent === 'Back in a moment');
+  await student.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()
+      .find((w) => w.webContents.getURL().endsWith('overlay.html'))
+      .webContents.forcefullyCrashRenderer(),
+  );
+  let restored = false;
+  await waitFor(async () => {
+    const fresh = await primaryOverlay(student);
+    const message = fresh && fresh !== overlay ? await fresh.evaluate(() => document.getElementById('message')?.textContent).catch(() => null) : null;
+    return (restored = message === 'Back in a moment');
+  }, 10_000);
+  if (!restored) throw new Error('no lock screen after the crash');
+  await page.click('#unlock');
+  await waitFor(async () => overlayPages(student).length === 0);
+});
+
+await step('a crashed console window reloads and stops showing the screen', async () => {
+  const asks = (await page.locator('#broadcast.pick-screen').count()) > 0;
+  await page.click('#broadcast');
+  if (asks) await page.click('.menu button >> nth=0');
+  let overlay = null;
+  await waitFor(async () => (overlay = await primaryOverlay(student)) !== null);
+  await overlay.waitForFunction(() => Number(document.querySelector('#screen').dataset.frames) > 0, null, { timeout: 15_000 });
+  await teacher.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.forcefullyCrashRenderer());
+  // The student isn't left on a frozen picture, and the console comes back by itself.
+  await waitFor(async () => overlayPages(student).length === 0, 15_000);
+  const inConsole = (script) => teacher.evaluate(({ BrowserWindow }, js) => BrowserWindow.getAllWindows()[0].webContents.executeJavaScript(js), script);
+  const back = await waitFor(async () => (await inConsole("document.querySelectorAll('.card:not(.offline)').length").catch(() => 0)) > 0, 15_000)
+    .then(() => true)
+    .catch(() => false);
+  if (!back) throw new Error('the console did not come back');
+  if (!(await inConsole("document.getElementById('banner').hidden"))) throw new Error('the reloaded console still says it is showing the screen');
+});
+
+await teacher.close();
 await student.close();
 wolSocket.close();
 console.log(failures ? `\n${failures} step(s) failed` : '\nAll steps passed');

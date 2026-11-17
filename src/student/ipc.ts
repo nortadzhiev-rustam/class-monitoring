@@ -1,7 +1,7 @@
 // Types shared by the student's main process, preload and renderers
 // (the hidden capture window, the lock/broadcast overlays and the setup window).
 
-import type { PowerAction, RtcSignal } from '../shared/protocol';
+import type { BroadcastFrameMeta, PowerAction, RtcSignal } from '../shared/protocol';
 
 export interface OverlayState {
   mode: 'lock' | 'broadcast';
@@ -48,6 +48,26 @@ export type PromptCard =
   /** The countdown before a power action, or before the teacher closes the student's apps. */
   | { id: string; kind: 'power'; action: PowerAction | 'close-apps'; deadline: number };
 
+/** What the toolbar at the top of the screen shows while the teacher is connected. */
+export interface ToolbarState {
+  teacher: string;
+  room: string;
+  handRaised: boolean;
+  /** Chat messages from the teacher the student hasn't looked at yet. */
+  unread: number;
+  /** Title of the work the teacher is collecting, or null. */
+  collect: string | null;
+  /** The teacher is watching this screen right now / controlling this computer. */
+  viewing: boolean;
+  controlled: boolean;
+  /** Website rules or blocked apps are on. */
+  webLimited: boolean;
+  appsBlocked: boolean;
+}
+
+export const TOOLBAR_ACTIONS = ['hand', 'chat', 'hand-in'] as const;
+export type ToolbarAction = (typeof TOOLBAR_ACTIONS)[number];
+
 export interface ChatLine {
   id: string;
   from: 'teacher' | 'me';
@@ -72,7 +92,9 @@ export interface StudentApi {
   // Overlay windows
   overlayReady(): void;
   onOverlayState(listener: (state: OverlayState) => void): void;
+  /** The overlay can show the broadcast; sent again after a decoding problem, for a fresh keyframe. */
   broadcastReady(sessionId: string): void;
+  onBroadcastFrame(listener: (sessionId: string, meta: BroadcastFrameMeta, data: Uint8Array) => void): void;
 
   // Setup window
   setupInitial(): Promise<{ room: string; classKey: string; teacherHost: string; platform: string }>;
@@ -87,6 +109,13 @@ export interface StudentApi {
   promptAction(id: string, action: string, value?: number | string): void;
   /** Reports the content height so the window can fit it. */
   promptsSize(height: number): void;
+
+  // Toolbar
+  toolbarReady(): void;
+  onToolbar(listener: (state: ToolbarState) => void): void;
+  toolbarAction(action: ToolbarAction): void;
+  /** Whether the pointer is over the bar; elsewhere, clicks pass through to the apps below. */
+  toolbarPointer(over: boolean): void;
 
   // Chat window
   chatReady(): void;
