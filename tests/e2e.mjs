@@ -1,7 +1,7 @@
 // End-to-end check on one machine: starts a teacher console and student agents,
 // then exercises discovery, thumbnails, lock/unlock, remote view, remote control
 // (dry run: the real mouse is never moved), broadcast, auth, first-run setup,
-// selection targeting, late joiners, offline cards and disconnect safety.
+// selection targeting, late joiners, offline cards, card order and disconnect safety.
 //
 // Overlays open as small windows (CM_OVERLAY_WINDOWED) so the test never takes
 // over the screen. Screenshots go to tests/output/.
@@ -40,6 +40,8 @@ const base = {
   // Log instead of opening the browser or restarting this computer.
   CM_LAUNCH_DRY_RUN: '1',
   CM_POWER_DRY_RUN: '1',
+  // Log which apps would close instead of closing this computer's apps.
+  CM_CLOSE_APPS_DRY_RUN: '1',
   CM_POWER_DELAY: '2',
   CM_WOL_PORT: '47899',
 };
@@ -188,13 +190,20 @@ await step('locking everyone shows the message on the student', async () => {
   await waitFor(async () => (overlay = await primaryOverlay(student)) !== null);
   await overlay.waitForFunction(() => document.getElementById('message')?.textContent === 'Pens down, eyes up');
   await overlay.screenshot({ path: path.join(out, '2-lock-screen.png') });
-  return `${overlayPages(student).length} overlay window(s)`;
+  // The keyboard and mouse lock starts with the lock screen (dry run: it only logs).
+  await waitFor(async () => helperLog.join('').includes('[input-lock] locked')).catch(() => {
+    throw new Error('the keyboard and mouse lock did not start');
+  });
+  return `${overlayPages(student).length} overlay window(s), input locked`;
 });
 
 await step('unlocking everyone removes the lock screen', async () => {
   await page.click('#unlock');
   await page.waitForSelector('.card:not(.locked)', { timeout: 10_000 });
   await waitFor(async () => overlayPages(student).length === 0);
+  await waitFor(async () => helperLog.join('').includes('[input-lock] unlocked')).catch(() => {
+    throw new Error('the keyboard and mouse lock did not end');
+  });
 });
 
 await step('remote view streams the student screen', async () => {
@@ -486,6 +495,7 @@ await step('a blocked app is closed on the student', async () => {
   let exited = false;
   running.on('exit', () => (exited = true));
   await page.click('#apps');
+  await page.click('.menu button:has-text("Block apps")');
   await page.fill('#apps-list', 'cmblockme');
   await page.click('#apps-on');
   await waitFor(async () => exited, 15_000).catch(() => {
@@ -499,6 +509,7 @@ await step('a blocked app is closed on the student', async () => {
   await prompts.screenshot({ path: path.join(out, '15-app-blocked.png') });
   await prompts.click('.card.notice .btn');
   await page.click('#apps');
+  await page.click('.menu button:has-text("Block apps")');
   await page.click('#apps-off');
   await page.waitForSelector(`${card('student')} .pill:has-text("Apps blocked")`, { state: 'detached', timeout: 10_000 });
 });
@@ -513,6 +524,21 @@ await step('power controls warn the student first (dry run)', async () => {
   await prompts.screenshot({ path: path.join(out, '16-power-warning.png') });
   await waitFor(async () => studentLog().includes('[power] restart (dry run)'), 10_000);
   await prompts.waitForSelector('.card.power', { state: 'detached' });
+});
+
+await step('closing all apps warns the student first, then spares ClassMonitor (dry run)', async () => {
+  await page.click('#apps');
+  await page.click('.menu button:has-text("Close all apps")');
+  await page.click('#confirm-ok');
+  const prompts = pageOf(student, 'prompts.html');
+  await prompts.waitForSelector('.card.power:has-text("close your apps") .countdown', { timeout: 10_000 });
+  await prompts.waitForTimeout(400); // let the window grow to fit the card
+  await prompts.screenshot({ path: path.join(out, '18-close-apps-warning.png') });
+  let line = '';
+  await waitFor(async () => (line = /\[close-apps\] (.*) \(dry run\)/.exec(studentLog())?.[1] ?? '') !== '', 15_000);
+  if (/\b(Electron|ClassMonitor|Finder)\b/.test(line)) throw new Error(`would close ${line}`);
+  await prompts.waitForSelector('.card.power', { state: 'detached' });
+  return line.length > 60 ? `${line.slice(0, 60)}…` : line;
 });
 
 await step('the web filter bridge refuses programs without the secret', async () => {
@@ -672,6 +698,24 @@ await step('a group lock reaches only that group, also after a reconnect', async
   return target;
 });
 
+const cardOrder = () => page.$$eval('#grid .card', (els) => els.map((el) => el.dataset.id));
+/** The card order after dragging, to check it survives a restart. */
+let arranged = null;
+
+await step('dragging a card moves it to that place', async () => {
+  const before = await cardOrder();
+  if (before.length < 2) throw new Error(`only ${before.length} card(s) to arrange`);
+  const [first] = before;
+  const last = before[before.length - 1];
+  // Onto the left half of the first card: the last one goes in front of it.
+  await page.dragAndDrop(`.card[data-id="${last}"] footer`, `.card[data-id="${first}"] .screen`, { targetPosition: { x: 10, y: 40 } });
+  const after = await cardOrder();
+  if (after[0] !== last || after.length !== before.length) throw new Error(`order is now ${after.join(', ')}`);
+  await page.waitForSelector('#sort-name:not([hidden])', { timeout: 2000 });
+  arranged = after;
+  return `${after.length} cards`;
+});
+
 await step('a student who joins late gets the class lock', async () => {
   await lockTarget('Late again');
   const late = await launchStudent('late');
@@ -719,6 +763,19 @@ await step('the roster survives a teacher restart', async () => {
   if (await page.locator(card('late')).count()) throw new Error('a forgotten student came back');
   await page.waitForSelector('.view-chip:has-text("Table 1")', { timeout: 5000 });
   await page.waitForSelector(`${card('student')} .name:has-text("Ada Lovelace")`);
+});
+
+await step('the card order survives the restart, and Sort by name resets it', async () => {
+  if (!arranged) throw new Error('no order was arranged earlier');
+  const known = (await cardOrder()).filter((id) => arranged.includes(id));
+  const expected = arranged.filter((id) => known.includes(id));
+  if (known.join() !== expected.join()) throw new Error(`order is ${known.join(', ')}, expected ${expected.join(', ')}`);
+  await page.click('#sort-name');
+  await page.click('#confirm-ok');
+  await page.waitForSelector('#sort-name', { state: 'hidden', timeout: 2000 });
+  const names = await page.$$eval('#grid .card .name', (els) => els.map((el) => el.textContent));
+  const sorted = [...names].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  if (names.join() !== sorted.join()) throw new Error(`not in name order: ${names.join(', ')}`);
 });
 
 // Crash recovery runs last: Playwright can't use a page again once it has crashed.

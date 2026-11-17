@@ -51,6 +51,8 @@ public static class ClassMonitorInput {
     static readonly uint[] UP = { 0x0004, 0x0040, 0x0010 };
 
     public static bool DryRun;
+    /// Tags the input sent here, so lock-helper.ps1 lets remote control through.
+    static readonly IntPtr Mark = new IntPtr(0x434D4F4E);
     static readonly HashSet<int> heldButtons = new HashSet<int>();
     static readonly Dictionary<ushort, bool> heldKeys = new Dictionary<ushort, bool>();
 
@@ -61,7 +63,7 @@ public static class ClassMonitorInput {
 
     static INPUT Mouse(int dx, int dy, int data, uint flags) {
         var input = new INPUT { type = INPUT_MOUSE };
-        input.u.mi = new MOUSEINPUT { dx = dx, dy = dy, mouseData = data, dwFlags = flags };
+        input.u.mi = new MOUSEINPUT { dx = dx, dy = dy, mouseData = data, dwFlags = flags, dwExtraInfo = Mark };
         return input;
     }
 
@@ -99,6 +101,7 @@ public static class ClassMonitorInput {
             wVk = vk,
             wScan = (ushort)MapVirtualKey(vk, 0),
             dwFlags = (down ? 0 : KEYUP) | (extended ? EXTENDED : 0),
+            dwExtraInfo = Mark,
         };
         Send(input, "key " + vk + (down ? " down" : " up") + (extended ? " ext" : ""));
     }

@@ -10,11 +10,13 @@ import { configureApp, shareScreenWithoutPicker } from '../shared/electron-setup
 import { LIMITS, OPEN_POLICY, type Platform, type Policy, type RtcSignal, type StudentInfo, type TeacherMessage } from '../shared/protocol';
 import { OTHER_BROWSERS } from '../shared/web-rules';
 import { setBlockedApps } from './app-blocker';
+import { scheduleCloseApps } from './close-apps';
 import { chatUnread, initChat, openChat, receiveChat, refreshChat, resetChat } from './chat';
 import { isManagedConfig, loadStudentConfig, type StudentConfig } from './config';
 import { TeacherLink } from './connection';
 import { handInWork, handleFileMessage, resetFiles, showCollect } from './files';
 import { handNote, lowerHand, raiseHand } from './hand';
+import { restoreAfterCrash } from './input-lock';
 import type { ToolbarState } from './ipc';
 import { openApp, openUrl } from './launch';
 import { isNativeHostLaunch, runNativeHost } from './native-host';
@@ -212,6 +214,9 @@ function onTeacherMessage(msg: TeacherMessage, payload: Buffer | undefined): voi
     case 'power':
       schedulePower(msg.action, msg.delay);
       break;
+    case 'close-apps':
+      scheduleCloseApps(msg.delay);
+      break;
     case 'file-start':
     case 'file-chunk':
     case 'file-end':
@@ -301,6 +306,7 @@ app.whenReady().then(() => {
   shareScreenWithoutPicker();
 
   overlay = new Overlay(preload);
+  restoreAfterCrash();
   registerIpc();
   initPrompts(preload);
   initChat(preload);

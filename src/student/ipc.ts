@@ -45,7 +45,8 @@ export type PromptCard =
   | { id: string; kind: 'file'; from: string; name: string; path: string }
   | { id: string; kind: 'collect'; collectId: string; title: string; from: string; handedIn: string[]; sending: string[]; error: string | null }
   | { id: string; kind: 'notice'; title: string; text: string }
-  | { id: string; kind: 'power'; action: PowerAction; deadline: number };
+  /** The countdown before a power action, or before the teacher closes the student's apps. */
+  | { id: string; kind: 'power'; action: PowerAction | 'close-apps'; deadline: number };
 
 /** What the toolbar at the top of the screen shows while the teacher is connected. */
 export interface ToolbarState {

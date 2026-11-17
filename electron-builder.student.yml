@@ -22,7 +22,11 @@ mac:
       to: native-bin/darwin
 
 win:
-  target: nsis
+  # x64 only: built on an Apple-silicon Mac, electron-builder would otherwise
+  # make ARM installers that ordinary Intel/AMD lab PCs can't run.
+  target:
+    - target: nsis
+      arch: [x64]
   icon: build/icon-student.png
   extraResources:
     - from: native/windows
