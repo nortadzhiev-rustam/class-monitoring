@@ -19,7 +19,8 @@ A LAN classroom-management app in the spirit of NetSupport School: a **teacher c
 | Feature | How it works |
 | --- | --- |
 | Messages | A pop-up on students' screens until they click OK |
-| Help requests | Students raise a hand from the tray or chat; you get a Help queue and a "Needs help" badge |
+| Student toolbar | A slim bar at the top of each student's screen while you're connected: who's connected, Raise hand, Chat (with unread count), Hand in work while you're collecting, and whether you're watching or controlling, or limiting websites or apps. It tucks into a small tab, slides out on hover, never takes the keyboard, and steps aside for the lock screen |
+| Help requests | Students raise a hand from the toolbar, the tray or chat; you get a Help queue and a "Needs help" badge |
 | Chat | One-to-one chat; the student's window opens when you write, without stealing their focus |
 | Quick polls | Preset or custom answers, live results with names, each answer shown on the card |
 

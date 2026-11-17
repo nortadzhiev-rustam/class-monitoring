@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { BroadcastFrameMeta, RtcSignal } from '../shared/protocol';
-import type { ChatState, DiscoveredClass, OverlayState, PromptCard, SetupStatus, StudentApi, ViewCommand } from './ipc';
+import type { ChatState, DiscoveredClass, OverlayState, PromptCard, SetupStatus, StudentApi, ToolbarState, ViewCommand } from './ipc';
 
 const api: StudentApi = {
   signal: (sessionId, signal) => ipcRenderer.send('student:signal', sessionId, signal),
@@ -34,6 +34,12 @@ const api: StudentApi = {
   },
   promptAction: (id, action, value) => ipcRenderer.send('student:prompt-action', id, action, value),
   promptsSize: (height) => ipcRenderer.send('student:prompts-size', height),
+  toolbarReady: () => ipcRenderer.send('student:toolbar-ready'),
+  onToolbar: (listener) => {
+    ipcRenderer.on('student:toolbar', (_e, state: ToolbarState) => listener(state));
+  },
+  toolbarAction: (action) => ipcRenderer.send('student:toolbar-action', action),
+  toolbarPointer: (over) => ipcRenderer.send('student:toolbar-pointer', over),
   chatReady: () => ipcRenderer.send('student:chat-ready'),
   onChat: (listener) => {
     ipcRenderer.on('student:chat', (_e, state: ChatState) => listener(state));

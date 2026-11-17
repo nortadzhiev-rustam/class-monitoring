@@ -1,0 +1,175 @@
+/* The toolbar at the top of the student's screen. The window is transparent;
+   only the bar (or, tucked away, its tab) is drawn. */
+
+:root {
+  --warn: #a35a00;
+  --warn-soft: #fff1dc;
+  --shadow: 0 6px 18px rgba(15, 20, 30, 0.16), 0 1px 3px rgba(15, 20, 30, 0.1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --warn: #ffb547;
+    --warn-soft: #3a2a12;
+    --shadow: 0 6px 18px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.35);
+  }
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+}
+
+body {
+  user-select: none;
+  cursor: default;
+}
+
+.sprite { position: absolute; width: 0; height: 0; }
+
+svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+#dock {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 46px;
+  padding: 0 6px 0 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 14px 14px;
+  box-shadow: var(--shadow);
+  white-space: nowrap;
+  transition: transform 0.22s ease, opacity 0.22s ease;
+}
+
+.tab {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 64px;
+  height: 18px;
+  margin-left: -32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 9px 9px;
+  box-shadow: var(--shadow);
+  transition: transform 0.22s ease, opacity 0.18s ease;
+}
+.tab svg { width: 14px; height: 14px; }
+.tab .dot { width: 7px; height: 7px; }
+
+/* Tucked away: the bar slides up out of sight and the tab stays. */
+#dock[data-open="false"] .bar { transform: translateY(-110%); opacity: 0; pointer-events: none; }
+#dock[data-open="true"] .tab { transform: translateY(-100%); opacity: 0; pointer-events: none; }
+
+.who {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding-right: 6px;
+  max-width: 220px;
+}
+.names { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
+.names strong, .names small { overflow: hidden; text-overflow: ellipsis; }
+.names strong { font-size: 12.5px; font-weight: 600; }
+.names small { font-size: 11px; color: var(--muted); }
+
+/* Green: connected. Amber: the teacher is watching. Red: the teacher has control. */
+.dot {
+  width: 9px;
+  height: 9px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--ok);
+}
+body[data-watch="viewing"] .dot { background: var(--warn); }
+body[data-watch="controlled"] .dot { background: var(--danger); }
+
+.sep {
+  width: 1px;
+  height: 24px;
+  margin: 0 6px;
+  background: var(--border);
+}
+
+.tool {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+.tool:hover { background: var(--bg); }
+.tool[hidden] { display: none; }
+.tool.icon { width: 30px; padding: 0; justify-content: center; color: var(--muted); }
+.tool.icon svg { width: 16px; height: 16px; }
+
+#hand[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+#hand-in { background: var(--accent-soft); color: var(--accent); margin-left: 2px; }
+#hand-in:hover { filter: brightness(0.97); }
+
+.badge {
+  min-width: 17px;
+  height: 17px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 17px;
+  text-align: center;
+}
+.badge[hidden] { display: none; }
+
+.chips { display: flex; align-items: center; gap: 4px; margin: 0 4px 0 6px; }
+.chips:empty { display: none; }
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 9px 0 7px;
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 500;
+}
+.chip svg { width: 14px; height: 14px; }
+.chip.viewing { background: var(--warn-soft); color: var(--warn); }
+.chip.controlled { background: var(--danger-soft); color: var(--danger); }

@@ -59,6 +59,13 @@ export function handleFileMessage(msg: FileMessage, payload: Buffer | undefined)
 export function resetFiles(): void {
   receiver.abortAll();
   uploads.clear();
+  collecting = null;
+}
+
+/** "Hand in work" on the toolbar: the same as the button on the collection card. */
+export function handInWork(): void {
+  const card = collecting && findPrompt(`collect-${collecting.collectId}`);
+  if (card?.kind === 'collect') void handIn(card);
 }
 
 onPromptAction('file', (card, action) => {
@@ -70,8 +77,12 @@ onPromptAction('file', (card, action) => {
 
 // ---------------------------------------------------------------- collecting work
 
+/** The work the teacher is collecting, if any. */
+let collecting: Collect | null = null;
+
 /** Shows or clears the "hand in" card to match the teacher's policy. */
 export function showCollect(collect: Collect | null): void {
+  collecting = collect;
   removePrompts((c) => c.kind === 'collect' && c.collectId !== collect?.collectId);
   if (!collect || findPrompt(`collect-${collect.collectId}`)) return;
   showPrompt({

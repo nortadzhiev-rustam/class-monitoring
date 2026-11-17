@@ -7,9 +7,11 @@ import path from 'node:path';
 import { LIMITS } from '../shared/protocol';
 import { handNote, lowerHand, raiseHand } from './hand';
 import type { ChatLine, ChatState } from './ipc';
-import { send, state } from './state';
+import { changed, send, state } from './state';
 
 let lines: ChatLine[] = [];
+/** Messages from the teacher since the student last looked at the chat (shown on the toolbar). */
+let unread = 0;
 let win: BrowserWindow | null = null;
 let preload = '';
 
@@ -32,9 +34,18 @@ export function initChat(preloadPath: string): void {
   });
 }
 
+export const chatUnread = () => unread;
+
+function setUnread(count: number): void {
+  if (count === unread) return;
+  unread = count;
+  changed();
+}
+
 /** A message from the teacher. */
 export function receiveChat(id: string, text: string): void {
   lines.push({ id: String(id).slice(0, 64), from: 'teacher', text: String(text).slice(0, LIMITS.chat), at: Date.now() });
+  if (!win?.isFocused()) setUnread(unread + 1);
   if (win) {
     push();
     if (!win.isFocused()) win.flashFrame(true);
@@ -46,6 +57,7 @@ export function receiveChat(id: string, text: string): void {
 /** The teacher went away: start the next conversation fresh. */
 export function resetChat(): void {
   lines = [];
+  unread = 0;
   win?.close();
 }
 
@@ -55,6 +67,7 @@ export function refreshChat(): void {
 }
 
 export function openChat(focus = true): void {
+  if (focus) setUnread(0);
   if (win) {
     win.show();
     if (focus) win.focus();
@@ -77,7 +90,10 @@ export function openChat(focus = true): void {
     if (focus) win?.show();
     else win?.showInactive();
   });
-  win.on('focus', () => win?.flashFrame(false));
+  win.on('focus', () => {
+    win?.flashFrame(false);
+    setUnread(0);
+  });
   win.on('closed', () => (win = null));
   void win.loadFile(path.join(__dirname, 'chat.html'));
 }

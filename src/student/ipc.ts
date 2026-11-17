@@ -47,6 +47,26 @@ export type PromptCard =
   | { id: string; kind: 'notice'; title: string; text: string }
   | { id: string; kind: 'power'; action: PowerAction; deadline: number };
 
+/** What the toolbar at the top of the screen shows while the teacher is connected. */
+export interface ToolbarState {
+  teacher: string;
+  room: string;
+  handRaised: boolean;
+  /** Chat messages from the teacher the student hasn't looked at yet. */
+  unread: number;
+  /** Title of the work the teacher is collecting, or null. */
+  collect: string | null;
+  /** The teacher is watching this screen right now / controlling this computer. */
+  viewing: boolean;
+  controlled: boolean;
+  /** Website rules or blocked apps are on. */
+  webLimited: boolean;
+  appsBlocked: boolean;
+}
+
+export const TOOLBAR_ACTIONS = ['hand', 'chat', 'hand-in'] as const;
+export type ToolbarAction = (typeof TOOLBAR_ACTIONS)[number];
+
 export interface ChatLine {
   id: string;
   from: 'teacher' | 'me';
@@ -88,6 +108,13 @@ export interface StudentApi {
   promptAction(id: string, action: string, value?: number | string): void;
   /** Reports the content height so the window can fit it. */
   promptsSize(height: number): void;
+
+  // Toolbar
+  toolbarReady(): void;
+  onToolbar(listener: (state: ToolbarState) => void): void;
+  toolbarAction(action: ToolbarAction): void;
+  /** Whether the pointer is over the bar; elsewhere, clicks pass through to the apps below. */
+  toolbarPointer(over: boolean): void;
 
   // Chat window
   chatReady(): void;
