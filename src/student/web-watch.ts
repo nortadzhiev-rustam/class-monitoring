@@ -258,7 +258,7 @@ export function parseMacScan(out: string): Scan {
     if (window === 'error') {
       // Not running any more (-600) is fine; anything else means this browser can't be watched.
       if (front !== '-600') readable = false;
-      if (front === NOT_ALLOWED) console.warn(`[web] not allowed to read ${id}: grant ClassMonitor Student Automation access to it`);
+      if (front === NOT_ALLOWED) console.warn(`[web] not allowed to read ${id}: grant Дидбон Хонанда Automation access to it`);
       continue;
     }
     tabs.push({ window: `${id}:${window}`, address: url ?? '', title: title.join(FIELD) || null, front: front === 'true', editing: false });

@@ -154,7 +154,7 @@ async function offerReload(): Promise<void> {
     buttons: ['Reload', 'Wait'],
     defaultId: 0,
     cancelId: 1,
-    message: 'ClassMonitor is not responding',
+    message: 'Дидбон is not responding',
     detail: 'Reloading stops showing your screen and closes any student screen you have open. Students stay connected.',
     signal: hangPrompt.signal,
   });
@@ -170,7 +170,7 @@ function createWindow(): void {
     height: 820,
     minWidth: 760,
     minHeight: 520,
-    title: 'ClassMonitor',
+    title: 'Дидбон',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#15171c' : '#f5f6f8',
     webPreferences: {
@@ -468,7 +468,7 @@ app.whenReady().then(async () => {
     await server.start();
   } catch (err) {
     dialog.showErrorBox(
-      'ClassMonitor could not start',
+      'Дидбон could not start',
       `Port ${server.settings.port} is unavailable (${(err as Error).message}). Is another teacher console running on this computer?`,
     );
     app.exit(1);

@@ -41,7 +41,7 @@ function renderClasses(): void {
         manual.open = false;
       });
       const room = Object.assign(document.createElement('span'), { className: 'room', textContent: c.room });
-      const meta = c.compatible ? `${c.teacher} · ${c.host}` : `${c.teacher} · different ClassMonitor version, update needed`;
+      const meta = c.compatible ? `${c.teacher} · ${c.host}` : `${c.teacher} · different Дидбон version, update needed`;
       const teacher = Object.assign(document.createElement('span'), { className: 'teacher', textContent: meta });
       option.classList.toggle('incompatible', !c.compatible);
       option.append(radio, room, teacher);
@@ -113,7 +113,7 @@ api.onSetupStatus((s: SetupStatus) => {
     case 'waiting':
       showStatus(
         'progress',
-        `Saved. No teacher has answered for ${s.room} yet. This computer joins automatically when your teacher opens ClassMonitor.`,
+        `Saved. No teacher has answered for ${s.room} yet. This computer joins automatically when your teacher opens Дидбон.`,
       );
       join.disabled = false;
       break;

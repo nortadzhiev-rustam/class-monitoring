@@ -1,6 +1,8 @@
-# ClassMonitor
+# Дидбон (ClassMonitor)
 
 A LAN classroom-management app in the spirit of NetSupport School: a **teacher console** that sees every student screen at once, and a **student agent** that runs on each Windows or macOS computer.
+
+The apps are called **Дидбон** (*Didbon*, Tajik for "lookout"): **Дидбон Омӯзгор** ("teacher") for the console and **Дидбон Хонанда** ("pupil") for students. The code, the settings folders, `C:\ProgramData\ClassMonitor`, `Documents/ClassMonitor` and the Windows program files keep the name ClassMonitor, so computers that already have it keep their settings when they update.
 
 ## Features
 
@@ -40,9 +42,9 @@ A LAN classroom-management app in the spirit of NetSupport School: a **teacher c
 | Feature | How it works |
 | --- | --- |
 | Open website / app | Opens a link in the default browser or an app by name |
-| Close all apps | **Apps ▾ → Close all apps** asks every open app to quit after a 15-second warning, the same way Cmd+Q or a window's ✕ would, so apps with unsaved work can ask the student first. Finder, File Explorer and ClassMonitor stay open |
+| Close all apps | **Apps ▾ → Close all apps** asks every open app to quit after a 15-second warning, the same way Cmd+Q or a window's ✕ would, so apps with unsaved work can ask the student first. Finder, File Explorer and Дидбон stay open |
 | Block apps | **Apps ▾ → Block apps**: named apps (with `*` wildcards) are closed whenever they start |
-| Websites | Block all websites in one go, or block-list / allow-list sites. The student app watches the browser's address bar and sends blocked sites to a "blocked" page, with nothing to install; the optional ClassMonitor Web Filter extension also stops them before they load |
+| Websites | Block all websites in one go, or block-list / allow-list sites. The student app watches the browser's address bar and sends blocked sites to a "blocked" page, with nothing to install; the optional Дидбон Web Filter extension also stops them before they load |
 | Power | Log off, restart or shut down after a 15-second warning; Wake-on-LAN for offline computers |
 
 **Who does an action apply to?** Select cards (corner checkbox, Cmd/Ctrl-click, Shift-click) and actions go to the selection; with nothing selected they go to the group you're viewing, or everyone. The bar above the toolbar always says which. Lock, show my screen, polls, the register, collecting work, blocked apps and website rules also reach students who join late or reconnect.
@@ -99,8 +101,8 @@ The icons are drawn in `build/icon-teacher.svg` and `build/icon-student.svg`. Af
 
 ## Deploying to a classroom
 
-1. **Teacher:** install ClassMonitor Teacher (`npm run dist:teacher`). On first run it generates a class key. Open **Class settings** to see it, change the room name, and copy the student config.
-2. **Students:** install ClassMonitor Student (`npm run dist:student`). Then either:
+1. **Teacher:** install Дидбон Омӯзгор (`npm run dist:teacher` makes `Didbon-Teacher-Setup-<version>.exe` and a `.dmg`). On first run it generates a class key. Open **Class settings** to see it, change the room name, and copy the student config.
+2. **Students:** install Дидбон Хонанда (`npm run dist:student` makes `Didbon-Student-Setup-<version>.exe` and a `.pkg`). Then either:
 
    **Let students join themselves.** On first launch the student app opens a **Join your class** window that lists the classes it can hear on the network. The student picks theirs and types the class key. Once a teacher has accepted the key the choice is locked in, so students can't switch themselves out of a class. The window only comes back if the teacher later rejects the key (for example after generating a new one).
 
@@ -115,7 +117,7 @@ The icons are drawn in `build/icon-teacher.svg` and `build/icon-student.svg`. Af
    Optional: `"teacherHost": "10.0.4.20"` if the network blocks UDP broadcast, `"displayName"` to override the computer name, `"extensionIds"` for the published web filter (below). Make the file readable by students but writable only by admins.
 
    **Save student.json…** in the teacher's Class settings writes this file for you. The Windows student installer creates `C:\ProgramData\ClassMonitor` (admins can write, students only read). File Explorer hides `ProgramData`: paste the path into the address bar. On macOS, create `/Library/Application Support/ClassMonitor` yourself.
-3. **macOS students:** push a PPPC profile through MDM that grants ClassMonitor Student **Screen Recording**, **Accessibility** (remote control) and **Automation** of System Events and loginwindow (power controls) and of Google Chrome, Microsoft Edge and Safari (website rules). Without it each student approves the prompts by hand.
+3. **macOS students:** push a PPPC profile through MDM that grants Дидбон Хонанда (bundle ID `school.classmonitor.student`) **Screen Recording**, **Accessibility** (remote control) and **Automation** of System Events and loginwindow (power controls) and of Google Chrome, Microsoft Edge and Safari (website rules). Without it each student approves the prompts by hand.
 4. **Network:** students listen on UDP **47800** for teacher beacons; the teacher accepts TCP **47801**. The Windows installers add these firewall rules (domain and private profiles). Wake-on-LAN also needs it turned on in each PC's firmware and network card settings.
 
 The student agent starts at login and has no way to quit it from the app (no menu, no Dock icon). It never blocks logging out or shutting down. On Windows the installer and uninstaller stop it themselves, so updating or removing it (Settings → Apps, admin rights needed) doesn't ask anyone to close it.
@@ -125,11 +127,11 @@ The student agent starts at login and has no way to quit it from the app (no men
 **Without installing anything.** While website rules are on, the student app reads the address each browser window shows, every second, and sends a window that opened a blocked site to a "blocked" page it serves on that computer (`127.0.0.1`). In allow-list mode that page links to the allowed sites. This is how NetSupport-style classroom tools work:
 
 - **Windows:** Chrome, Edge, Firefox, Brave, Vivaldi and Opera, through UI Automation (`native/windows/browser-helper.ps1`). To change the address the window comes to the front for a moment; one that can't is closed.
-- **macOS:** Chrome, Edge, Brave, Vivaldi, Chromium and Safari, through AppleScript. Each student allows ClassMonitor Student to control each browser the first time (or the PPPC profile above does). Firefox can't be read on macOS.
+- **macOS:** Chrome, Edge, Brave, Vivaldi, Chromium and Safari, through AppleScript. Each student allows Дидбон Хонанда to control each browser the first time (or the PPPC profile above does). Firefox can't be read on macOS.
 
 It sees only the tab on screen in each window, catches a site a moment after it starts opening, doesn't stop sites shown inside other pages, and waits while the student is typing in the address bar. Cards say **Web filter missing** where Chrome or Edge is open but the student app can't read it (on macOS: Automation not allowed).
 
-**The extension: stronger, optional.** The **ClassMonitor Web Filter** extension blocks sites before they load, frames included, in every tab. It talks to the student app on the same computer; both can run together. The student app registers itself with Chrome and Edge for the logged-in user automatically. On Windows PCs that aren't managed by a domain or Intune, Chrome and Edge only install extensions automatically from their stores. What you do once:
+**The extension: stronger, optional.** The **Дидбон Web Filter** extension blocks sites before they load, frames included, in every tab. It talks to the student app on the same computer; both can run together. The student app registers itself with Chrome and Edge for the logged-in user automatically. On Windows PCs that aren't managed by a domain or Intune, Chrome and Edge only install extensions automatically from their stores. What you do once:
 
 1. `npm run pack:extension` makes `release/classmonitor-web-filter-<version>.zip`.
 2. Publish it **unlisted** on the [Chrome Web Store](https://chrome.google.com/webstore/devconsole) (one-off $5 developer fee) and on [Microsoft Edge Add-ons](https://partner.microsoft.com/dashboard/microsoftedge/) (free). Each store gives the extension an ID.

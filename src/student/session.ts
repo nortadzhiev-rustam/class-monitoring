@@ -199,7 +199,7 @@ export function setControl(sessionId: string, enabled: boolean, teacherPlatform:
     send({
       type: 'error',
       sessionId,
-      message: 'Remote control needs Accessibility permission for ClassMonitor Student (System Settings → Privacy & Security → Accessibility).',
+      message: 'Remote control needs Accessibility permission for Дидбон Хонанда (System Settings → Privacy & Security → Accessibility).',
     });
     return;
   }

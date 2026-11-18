@@ -175,7 +175,7 @@ export class Overlay {
       // Kiosk on the primary display hides the taskbar/Dock and, on macOS, blocks
       // app switching and Force Quit while the lock is up. On Windows it is full screen.
       kiosk: !WINDOWED && isPrimary,
-      title: 'ClassMonitor',
+      title: 'Дидбон',
       webPreferences: {
         preload: this.preload,
         contextIsolation: true,

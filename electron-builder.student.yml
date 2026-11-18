@@ -1,6 +1,9 @@
 # npm run dist:student  ->  release/student/
 appId: school.classmonitor.student
-productName: ClassMonitor Student
+# The name people see (Tajik: "lookout, pupil"). The Windows program file and
+# folder keep the original name (win.executableName), so updates install over
+# earlier versions and the installer's firewall rule and taskkill still find it.
+productName: Дидбон Хонанда
 directories:
   output: release/student
 files:
@@ -14,11 +17,14 @@ mac:
   # Rendered from build/icon-student.svg by `npm run icons`.
   icon: build/icon-student.png
   target: pkg
+  artifactName: Didbon-Student-${version}-${arch}.${ext}
+  # Lets the signed (hardened) app use AppleScript: browsers for website rules, power controls.
+  entitlements: build/entitlements.student.mac.plist
   extendInfo:
     # Menu-bar agent: no Dock icon.
     LSUIElement: true
     # Shown when macOS asks the student to allow Automation (browsers for website rules, System Events for power).
-    NSAppleEventsUsageDescription: ClassMonitor Student reads and changes the address in your web browser so your teacher's website rules apply, and restarts or shuts down the computer when your teacher asks.
+    NSAppleEventsUsageDescription: Дидбон Хонанда reads and changes the address in your web browser so your teacher's website rules apply, and restarts or shuts down the computer when your teacher asks.
   extraResources:
     - from: native-bin/darwin
       to: native-bin/darwin
@@ -30,12 +36,14 @@ win:
     - target: nsis
       arch: [x64]
   icon: build/icon-student.png
+  executableName: ClassMonitor Student
   extraResources:
     - from: native/windows
       to: native/windows
 nsis:
-  # Silent, machine-wide install for deployment tools: "ClassMonitor Student Setup.exe /S"
+  # Silent, machine-wide install for deployment tools: "Didbon-Student-Setup-<version>.exe /S"
   oneClick: true
+  artifactName: Didbon-Student-Setup-${version}.${ext}
   perMachine: true
   # Opens UDP 47800 for teacher discovery beacons.
   include: build/student-installer.nsh

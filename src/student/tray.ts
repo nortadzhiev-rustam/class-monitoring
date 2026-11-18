@@ -50,7 +50,7 @@ function statusLine(): string {
   const { config, problem, teacher } = state;
   if (!config) return 'Not set up yet: join a class to start';
   if (problem === 'key') return `The teacher of ${config.room} didn't accept the class key`;
-  if (problem === 'version') return `The teacher of ${config.room} runs a different ClassMonitor version`;
+  if (problem === 'version') return `The teacher of ${config.room} runs a different Дидбон version`;
   if (!teacher) return `Looking for the teacher of ${config.room}…`;
   return `Connected to ${teacher.name} (${teacher.room})`;
 }
@@ -61,7 +61,7 @@ export function updateTray(): void {
   if (process.platform !== 'darwin') tray.setImage(trayIcon(connected ? GREEN : GREY));
 
   const items: Electron.MenuItemConstructorOptions[] = [
-    { label: 'ClassMonitor Student', enabled: false },
+    { label: 'Дидбон Хонанда', enabled: false },
     { label: statusLine(), enabled: false },
   ];
   if (connected) items.push({ label: 'Your teacher can see this screen', enabled: false });
@@ -87,9 +87,9 @@ export function updateTray(): void {
   } else if (state.managed && state.problem === 'key') {
     items.push({ label: 'Ask IT to update the class key on this computer', enabled: false });
   }
-  if (state.problem === 'version') items.push({ label: 'Ask your teacher or IT to update ClassMonitor', enabled: false });
+  if (state.problem === 'version') items.push({ label: 'Ask your teacher or IT to update Дидбон', enabled: false });
   if (canQuit) items.push({ type: 'separator' }, { label: 'Quit (development only)', click: () => app.exit(0) });
 
-  tray.setToolTip(`ClassMonitor: ${statusLine()}`);
+  tray.setToolTip(`Дидбон: ${statusLine()}`);
   tray.setContextMenu(Menu.buildFromTemplate(items));
 }

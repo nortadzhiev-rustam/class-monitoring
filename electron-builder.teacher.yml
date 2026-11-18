@@ -1,6 +1,9 @@
 # npm run dist:teacher  ->  release/teacher/
 appId: school.classmonitor.teacher
-productName: ClassMonitor Teacher
+# The name people see (Tajik: "lookout, teacher"). The Windows program file and
+# folder keep the original name (win.executableName), so updates install over
+# earlier versions and the installer's firewall rule still finds the program.
+productName: Дидбон Омӯзгор
 directories:
   output: release/teacher
 files:
@@ -14,6 +17,7 @@ mac:
   # Rendered from build/icon-teacher.svg by `npm run icons`.
   icon: build/icon-teacher.png
   target: dmg
+  artifactName: Didbon-Teacher-${version}-${arch}.${ext}
 
 win:
   # x64 only: built on an Apple-silicon Mac, electron-builder would otherwise
@@ -22,7 +26,9 @@ win:
     - target: nsis
       arch: [x64]
   icon: build/icon-teacher.png
+  executableName: ClassMonitor Teacher
 nsis:
+  artifactName: Didbon-Teacher-Setup-${version}.${ext}
   oneClick: false
   perMachine: true
   # Opens TCP 47801 so student agents can connect.

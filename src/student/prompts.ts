@@ -96,7 +96,7 @@ function createWindow(): void {
     skipTaskbar: true,
     alwaysOnTop: true,
     hasShadow: true,
-    title: 'ClassMonitor',
+    title: 'Дидбон',
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#15171c' : '#f5f6f8',
     webPreferences: { preload, contextIsolation: true, sandbox: true },
   });

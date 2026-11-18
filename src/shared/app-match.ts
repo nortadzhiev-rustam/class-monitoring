@@ -31,9 +31,9 @@ function pattern(entry: string): RegExp {
   return new RegExp(`^${escaped}$`);
 }
 
-/** The OS shell and ClassMonitor's own programs, which are never closed. */
+/** The OS shell and ClassMonitor's own programs (shown as Дидбон), which are never closed. */
 export function isProtected(processPath: string): boolean {
-  return programNames(processPath).some((n) => PROTECTED.has(n) || n.startsWith('classmonitor'));
+  return programNames(processPath).some((n) => PROTECTED.has(n) || n.startsWith('classmonitor') || n.startsWith('дидбон'));
 }
 
 /** Returns the blocked entry this program matches, or null (always null for protected programs). */

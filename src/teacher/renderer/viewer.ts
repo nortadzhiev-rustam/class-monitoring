@@ -74,7 +74,7 @@ export function open(s: Student, control: boolean, displayId?: string): void {
   });
   const waitTimer = window.setTimeout(() => {
     if (viewer?.sessionId === sessionId && !decoder.frames) {
-      stageStatus.textContent = `Still waiting for ${store.displayName(s)}'s screen. Their computer may be busy, asleep or on an older version of ClassMonitor.`;
+      stageStatus.textContent = `Still waiting for ${store.displayName(s)}'s screen. Their computer may be busy, asleep or on an older version of Дидбон.`;
     }
   }, WAIT_MS);
   viewer = { id, sessionId, displayId, decoder, waitTimer, control: false, buttons: new Set(), keys: new Set() };

@@ -268,7 +268,7 @@ export async function wakeUp(ids: string[]): Promise<void> {
   try {
     const n = await api.wake(offline);
     if (n) toast(`Sent a wake-up signal to ${plural(n, 'computer')}. Only computers with Wake-on-LAN turned on will start.`, 'info');
-    else toast("ClassMonitor doesn't know the network address of those computers yet.");
+    else toast("Дидбон doesn't know the network address of those computers yet.");
   } catch (err) {
     toast(errorText(err));
   }
