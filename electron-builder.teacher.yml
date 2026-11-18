@@ -3,7 +3,12 @@ appId: school.classmonitor.teacher
 # The name people see (Tajik: "lookout, teacher"). The Windows program file and
 # folder keep the original name (win.executableName), so updates install over
 # earlier versions and the installer's firewall rule still finds the program.
-productName: Дидбон Омӯзгор
+#
+# ӯ is written as у + combining macron (ӯ, Unicode NFD): electron-builder
+# names the Mac app's files in that form, and if the name in Info.plist is the
+# one-character ӯ instead, Electron can't find its helper apps and crashes at
+# launch on Apple silicon. tests/unit/build-config.test.ts keeps it that way.
+productName: "Дидбон Омӯзгор"
 directories:
   output: release/teacher
 files:
