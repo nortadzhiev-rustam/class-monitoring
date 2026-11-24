@@ -13,6 +13,7 @@ import { cleanRules, type WebRules } from '../shared/web-rules';
 import { toCsv } from './csv';
 import { TeacherFiles } from './files';
 import type { ChatMessage, Group, Target, TeacherEvent, TeacherScreen, TeacherSettings, TeacherState } from './ipc';
+import { loadPolicies, savePolicies } from './policy';
 import { Roster } from './roster';
 import { ClassServer, type ServerConfig } from './server';
 import { wake } from './wake';
@@ -43,6 +44,8 @@ let appMenu: Menu | null = null;
 let shareDisplay: string | undefined;
 
 const settingsFile = () => path.join(app.getPath('userData'), 'teacher.json');
+/** Blocked apps, website rules and mute, as the teacher left them (see policy.ts). */
+const policyFile = () => path.join(app.getPath('userData'), 'policy.json');
 
 function loadConfig(): ServerConfig {
   let saved: Partial<ServerConfig> = {};
@@ -226,7 +229,10 @@ function registerIpc(): void {
     return state();
   });
   on('teacher:copy', (text: string) => clipboard.writeText(text));
-  on('teacher:forget', (id: string) => roster.forget(id));
+  on('teacher:forget', (id: string) => {
+    roster.forget(String(id));
+    server.forget(String(id));
+  });
   on('teacher:lock', (target: Target, message: string) => server.setPolicy(asTarget(target), { lock: lockText(message) }));
   on('teacher:unlock', (target: Target) => server.setPolicy(asTarget(target), { lock: null }));
   on('teacher:view-start', (id: string, sessionId: string, displayId?: string) => {
@@ -292,6 +298,7 @@ function registerIpc(): void {
     }
     return message;
   });
+  on('teacher:chat-close', (id: string) => server.sendTo({ ids: [String(id)], everyone: false }, { type: 'chat-close' }));
   on('teacher:hand-clear', (id: string) => server.sendTo({ ids: [String(id)], everyone: false }, { type: 'hand-clear' }));
   handle('teacher:poll-start', (target: Target, question: string, choices: string[]): Poll => {
     const poll: Poll = {
@@ -381,6 +388,7 @@ function registerIpc(): void {
     server.setPolicy(asTarget(target), { apps: list.length ? list : null });
   });
   on('teacher:set-web', (target: Target, rules: WebRules | null) => server.setPolicy(asTarget(target), { web: cleanRules(rules) }));
+  on('teacher:set-mute', (target: Target, mute: boolean) => server.setPolicy(asTarget(target), { mute: mute === true }));
   handle('teacher:wake', async (ids: string[]) => {
     const computers = (Array.isArray(ids) ? ids : []).map((id) => roster.get(String(id))).filter((e) => e?.macs.length);
     await wake(computers.flatMap((e) => e!.macs));
@@ -414,7 +422,8 @@ app.whenReady().then(async () => {
   screen.on('display-removed', screensChanged);
   screen.on('display-metrics-changed', screensChanged);
   roster = new Roster(path.join(app.getPath('userData'), 'roster.json'));
-  server = new ClassServer(loadConfig());
+  server = new ClassServer(loadConfig(), loadPolicies(policyFile()));
+  server.on('lasting', (saved) => savePolicies(policyFile(), saved));
   relay = new FrameRelay<TeacherMessage>(
     (id) => server.link(id),
     {
@@ -463,6 +472,7 @@ app.whenReady().then(async () => {
   server.on('view-mode', (id, sessionId, mode, reason) => emit({ type: 'view-mode', id, sessionId, mode, ...(reason ? { reason } : {}) }));
   server.on('broadcast-ready', (id, sessionId) => relay.ready(id, sessionId));
   server.on('student-error', (id, sessionId, message) => emit({ type: 'student-error', id, sessionId, message }));
+  server.on('control-blocked', (id, sessionId, reason) => emit({ type: 'control-blocked', id, sessionId, reason }));
 
   try {
     await server.start();

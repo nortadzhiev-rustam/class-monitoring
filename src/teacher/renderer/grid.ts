@@ -169,6 +169,7 @@ function badges(s: Student): HTMLElement[] {
   if (s.unread) result.push(pill(`${s.unread} new message${s.unread === 1 ? '' : 's'}`, 'chat'));
   if (s.displays.length > 1) result.push(pill(`${s.displays.length} screens`, 'chat'));
   if (s.policy.apps) result.push(pill('Apps blocked'));
+  if (s.policy.mute) result.push(pill('Muted'));
   // Chrome/Edge open, but neither the extension nor the address watcher can reach it: the rules can't apply there.
   if (s.policy.web) {
     const rules = blocksEverySite(s.policy.web) ? 'Websites blocked' : 'Web rules on';

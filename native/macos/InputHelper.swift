@@ -1,17 +1,32 @@
 // Remote-control input helper for macOS student computers.
 // Reads one command per line on stdin (protocol in src/student/input.ts) and
 // posts the matching CGEvents. macOS only delivers them when the launching app
-// (ClassMonitor Student) has the Accessibility permission.
+// (ClassMonitor Student) has the Accessibility permission. While it runs it
+// also prints "state password-prompt" when macOS puts up a password prompt
+// (which screen sharing doesn't show), and "state ok" once it has gone.
 //
 // `--lock` instead swallows the student's own keyboard and mouse clicks while
 // the lock screen or the teacher's screen is up (see src/student/input-lock.ts).
 //
+// `--mute` instead keeps the sound off until stdin closes, then puts it back
+// (see src/student/mute.ts).
+//
 // `--dry-run` prints the events instead of posting them, for testing.
 
+import CoreAudio
 import CoreGraphics
 import Foundation
 
 let dryRun = CommandLine.arguments.contains("--dry-run")
+let output = NSLock()
+
+/// One line on stdout; the state watcher writes from another thread.
+func say(_ line: String) {
+  output.lock()
+  print(line)
+  fflush(stdout)
+  output.unlock()
+}
 let source = CGEventSource(stateID: .hidSystemState)
 /// Tags the events this helper posts, so a --lock helper lets remote control through.
 let classMonitorMark: Int64 = 0x434D_4F4E
@@ -31,8 +46,7 @@ let modifierFlags: [CGKeyCode: CGEventFlags] = [
 func post(_ event: CGEvent?, _ description: @autoclosure () -> String) {
   guard let event = event else { return }
   if dryRun {
-    print(description())
-    fflush(stdout)
+    say(description())
   } else {
     event.setIntegerValueField(.eventSourceUserData, value: classMonitorMark)
     event.post(tap: .cghidEventTap)
@@ -133,19 +147,150 @@ func runLock() -> Never {
     CFRunLoopAddSource(CFRunLoopGetMain(), CFMachPortCreateRunLoopSource(nil, tap, 0), .commonModes)
     CGEvent.tapEnable(tap: tap, enable: true)
   }
-  print("locked")
-  fflush(stdout)
+  say("locked")
   Thread {
     while readLine() != nil {}
-    print("unlocked")
-    fflush(stdout)
+    say("unlocked")
     exit(0)
   }.start()
   CFRunLoopRun()
   exit(0)
 }
 
+// MARK: - --mute
+
+/// Something that silences an output device: its mute switch, or for devices
+/// without one its volume, on the whole device or on one channel.
+struct AudioControl: Hashable {
+  let device: AudioObjectID
+  let selector: AudioObjectPropertySelector
+  let element: AudioObjectPropertyElement
+
+  var isMute: Bool { selector == kAudioDevicePropertyMute }
+  /// The value that means "no sound".
+  var silent: Double { isMute ? 1 : 0 }
+  var address: AudioObjectPropertyAddress {
+    AudioObjectPropertyAddress(mSelector: selector, mScope: kAudioDevicePropertyScopeOutput, mElement: element)
+  }
+
+  var settable: Bool {
+    var addr = address
+    guard AudioObjectHasProperty(device, &addr) else { return false }
+    var yes = DarwinBoolean(false)
+    return AudioObjectIsPropertySettable(device, &addr, &yes) == noErr && yes.boolValue
+  }
+
+  func read() -> Double? {
+    var addr = address
+    if isMute {
+      var value = UInt32(0)
+      var size = UInt32(MemoryLayout<UInt32>.size)
+      return AudioObjectGetPropertyData(device, &addr, 0, nil, &size, &value) == noErr ? Double(value) : nil
+    }
+    var value = Float32(0)
+    var size = UInt32(MemoryLayout<Float32>.size)
+    return AudioObjectGetPropertyData(device, &addr, 0, nil, &size, &value) == noErr ? Double(value) : nil
+  }
+
+  func write(_ value: Double) {
+    var addr = address
+    if isMute {
+      var raw = UInt32(value != 0 ? 1 : 0)
+      AudioObjectSetPropertyData(device, &addr, 0, nil, UInt32(MemoryLayout<UInt32>.size), &raw)
+    } else {
+      var raw = Float32(value)
+      AudioObjectSetPropertyData(device, &addr, 0, nil, UInt32(MemoryLayout<Float32>.size), &raw)
+    }
+  }
+}
+
+/// The speakers or headphones sound goes to right now.
+func defaultOutputDevice() -> AudioObjectID? {
+  var addr = AudioObjectPropertyAddress(
+    mSelector: kAudioHardwarePropertyDefaultOutputDevice, mScope: kAudioObjectPropertyScopeGlobal, mElement: 0)
+  var device = AudioObjectID(kAudioObjectUnknown)
+  var size = UInt32(MemoryLayout<AudioObjectID>.size)
+  let status = AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size, &device)
+  return status == noErr && device != kAudioObjectUnknown ? device : nil
+}
+
+/// How to silence a device: its mute switch (whole device, else each channel), else its volume.
+func silencers(_ device: AudioObjectID) -> [AudioControl] {
+  for selector in [kAudioDevicePropertyMute, kAudioDevicePropertyVolumeScalar] {
+    let whole = AudioControl(device: device, selector: selector, element: 0)
+    if whole.settable { return [whole] }
+    let channels = (1...8).map { AudioControl(device: device, selector: selector, element: AudioObjectPropertyElement($0)) }.filter { $0.settable }
+    if !channels.isEmpty { return channels }
+  }
+  return []
+}
+
+/// --mute: keeps whichever device is playing silent until stdin closes, then
+/// puts every control it changed back as it was.
+func runMute() -> Never {
+  var original: [AudioControl: Double] = [:]
+  var warned = Set<AudioObjectID>()
+  func silence() {
+    guard !dryRun, let device = defaultOutputDevice() else { return }
+    let controls = silencers(device)
+    if controls.isEmpty && warned.insert(device).inserted {
+      FileHandle.standardError.write(Data("this output has no mute or volume control macOS can change\n".utf8))
+    }
+    for control in controls {
+      guard let value = control.read() else { continue }
+      if original[control] == nil { original[control] = value }
+      if value != control.silent { control.write(control.silent) }
+    }
+  }
+  let closed = DispatchSemaphore(value: 0)
+  Thread {
+    while readLine() != nil {}
+    closed.signal()
+  }.start()
+  silence()
+  say("muted")
+  // The student may turn it back up, or plug in headphones: keep it off.
+  while closed.wait(timeout: .now() + 0.5) == .timedOut { silence() }
+  for (control, value) in original { control.write(value) }
+  say("unmuted")
+  exit(0)
+}
+
+// MARK: - what remote control can't reach
+
+/// macOS asks for a password (an administrator's, or the keychain's) in windows
+/// of this process. They are left out of screen sharing, so the teacher sees
+/// nothing there, and they may not take typing from other programs.
+let passwordPromptOwners: Set<String> = ["SecurityAgent"]
+
+func passwordPromptShown() -> Bool {
+  guard let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else {
+    return false
+  }
+  return windows.contains { passwordPromptOwners.contains($0[kCGWindowOwnerName as String] as? String ?? "") }
+}
+
+/// Prints "state <why>" whenever what's in front changes: "ok", or something remote control can't reach.
+func watchState() {
+  // Testing: pretend, so the whole path to the teacher's screen can be checked.
+  let fake = dryRun ? ProcessInfo.processInfo.environment["CM_FAKE_INPUT_STATE"] : nil
+  Thread {
+    var last = ""
+    while true {
+      let state = fake ?? (passwordPromptShown() ? "password-prompt" : "ok")
+      if state != last {
+        say("state \(state)")
+        last = state
+      }
+      Thread.sleep(forTimeInterval: 1)
+    }
+  }.start()
+}
+
 if CommandLine.arguments.contains("--lock") { runLock() }
+if CommandLine.arguments.contains("--mute") { runMute() }
+
+watchState()
 
 while let line = readLine() {
   let parts = line.split(separator: " ").map(String.init)

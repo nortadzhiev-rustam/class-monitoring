@@ -2,6 +2,9 @@
 # Reads one command per line on stdin (protocol in src/student/input.ts) and
 # injects it with SendInput. Runs in the logged-in student's session, so it
 # cannot drive elevated (admin) windows or the secure desktop (UAC, Ctrl+Alt+Del).
+# Windows drops that input without saying so, so once a second it checks what
+# is in front and prints "state secure-desktop", "state elevated" or "state ok"
+# when that changes; the teacher is told why their clicks do nothing.
 #
 # `-DryRun` prints the events instead of injecting them, for testing.
 
@@ -12,7 +15,10 @@ $ErrorActionPreference = 'Stop'
 Add-Type -TypeDefinition @'
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Text;
+using System.Threading;
 
 public static class ClassMonitorInput {
     [StructLayout(LayoutKind.Sequential)]
@@ -57,7 +63,7 @@ public static class ClassMonitorInput {
     static readonly Dictionary<ushort, bool> heldKeys = new Dictionary<ushort, bool>();
 
     static void Send(INPUT input, string description) {
-        if (DryRun) { Console.WriteLine(description); return; }
+        if (DryRun) { Say(description); return; }
         SendInput(1, new[] { input }, Marshal.SizeOf(typeof(INPUT)));
     }
 
@@ -110,11 +116,138 @@ public static class ClassMonitorInput {
         foreach (var button in new List<int>(heldButtons)) Button(button, false, double.NaN, double.NaN);
         foreach (var key in new List<KeyValuePair<ushort, bool>>(heldKeys)) Key(key.Key, false, key.Value);
     }
+
+    // ------------------------------------------------------------ what input can't reach
+
+    [DllImport("user32.dll", SetLastError = true)]
+    static extern IntPtr OpenInputDesktop(uint flags, bool inherit, uint access);
+
+    [DllImport("user32.dll")]
+    static extern bool CloseDesktop(IntPtr desktop);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    static extern bool GetUserObjectInformation(IntPtr obj, int index, StringBuilder info, int length, out int needed);
+
+    [DllImport("user32.dll")]
+    static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern IntPtr OpenProcess(uint access, bool inherit, uint pid);
+
+    [DllImport("kernel32.dll")]
+    static extern bool CloseHandle(IntPtr handle);
+
+    [DllImport("kernel32.dll")]
+    static extern IntPtr GetCurrentProcess();
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    static extern bool OpenProcessToken(IntPtr process, uint access, out IntPtr token);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    static extern bool GetTokenInformation(IntPtr token, int infoClass, IntPtr info, int length, out int returned);
+
+    [DllImport("advapi32.dll")]
+    static extern IntPtr GetSidSubAuthorityCount(IntPtr sid);
+
+    [DllImport("advapi32.dll")]
+    static extern IntPtr GetSidSubAuthority(IntPtr sid, uint index);
+
+    const uint DESKTOP_READOBJECTS = 0x0001, PROCESS_QUERY_LIMITED_INFORMATION = 0x1000, TOKEN_QUERY = 0x0008;
+    const int UOI_NAME = 2, TokenIntegrityLevel = 25;
+    static readonly object output = new object();
+    static Timer watcher;
+    static string lastState = "";
+    static int ownIntegrity = -1;
+    static uint ownPid;
+
+    /// One line on stdout; the watcher writes from another thread.
+    public static void Say(string line) {
+        lock (output) { Console.WriteLine(line); Console.Out.Flush(); }
+    }
+
+    /// Windows has switched to its secure desktop (a User Account Control prompt, Ctrl+Alt+Del,
+    /// the lock screen): nothing in the student's session can see it or send it input.
+    static bool OnSecureDesktop() {
+        IntPtr desktop = OpenInputDesktop(0, false, DESKTOP_READOBJECTS);
+        if (desktop == IntPtr.Zero) return true;
+        try {
+            var name = new StringBuilder(256);
+            int needed;
+            if (!GetUserObjectInformation(desktop, UOI_NAME, name, name.Capacity * 2, out needed)) return false;
+            return !string.Equals(name.ToString(), "Default", StringComparison.OrdinalIgnoreCase);
+        } finally {
+            CloseDesktop(desktop);
+        }
+    }
+
+    /// The integrity level of a process (8192 = medium, 12288 = high, i.e. run as administrator), or -1.
+    static int IntegrityOf(IntPtr process) {
+        IntPtr token;
+        if (!OpenProcessToken(process, TOKEN_QUERY, out token)) return -1;
+        try {
+            int size;
+            GetTokenInformation(token, TokenIntegrityLevel, IntPtr.Zero, 0, out size);
+            if (size <= 0) return -1;
+            IntPtr info = Marshal.AllocHGlobal(size);
+            try {
+                if (!GetTokenInformation(token, TokenIntegrityLevel, info, size, out size)) return -1;
+                IntPtr sid = Marshal.ReadIntPtr(info); // TOKEN_MANDATORY_LABEL.Label.Sid
+                int count = Marshal.ReadByte(GetSidSubAuthorityCount(sid));
+                return count > 0 ? Marshal.ReadInt32(GetSidSubAuthority(sid, (uint)(count - 1))) : -1;
+            } finally {
+                Marshal.FreeHGlobal(info);
+            }
+        } finally {
+            CloseHandle(token);
+        }
+    }
+
+    /// The window in front belongs to a program running as administrator (or as another
+    /// account): Windows drops the keys and clicks this helper sends it (UIPI).
+    static bool ForegroundElevated() {
+        IntPtr window = GetForegroundWindow();
+        if (window == IntPtr.Zero) return false;
+        uint pid;
+        GetWindowThreadProcessId(window, out pid);
+        if (pid == 0 || pid == ownPid || ownIntegrity < 0) return false;
+        IntPtr process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+        // The student's own programs can always be looked at; one that can't runs as someone else.
+        if (process == IntPtr.Zero) return true;
+        try {
+            int theirs = IntegrityOf(process);
+            return theirs < 0 || theirs > ownIntegrity;
+        } finally {
+            CloseHandle(process);
+        }
+    }
+
+    static void Check(object unused) {
+        // An exception on this timer thread would end the helper, and remote control with it.
+        try {
+            string state = OnSecureDesktop() ? "secure-desktop" : ForegroundElevated() ? "elevated" : "ok";
+            if (state == lastState) return;
+            lastState = state;
+            Say("state " + state);
+        } catch (Exception) {
+            // Nothing to report this time, or nobody is listening any more.
+        }
+    }
+
+    /// Starts checking once a second what is in front of the student.
+    public static void Watch() {
+        ownPid = (uint)Process.GetCurrentProcess().Id;
+        ownIntegrity = IntegrityOf(GetCurrentProcess());
+        watcher = new Timer(Check, null, 0, 1000);
+    }
 }
 '@
 
 [ClassMonitorInput]::DryRun = [bool]$DryRun
 [ClassMonitorInput]::Init()
+[ClassMonitorInput]::Watch()
 $culture = [Globalization.CultureInfo]::InvariantCulture
 
 function Num([string[]]$parts, [int]$i) {

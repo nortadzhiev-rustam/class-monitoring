@@ -9,7 +9,7 @@ import { BrowserWindow, desktopCapturer, screen, systemPreferences } from 'elect
 import path from 'node:path';
 import { toDesktop } from '../shared/displays';
 import { FrameRelay, type ViewerLink } from '../shared/frame-relay';
-import type { FrameMeta, InputEvent, Platform, StudentMessage } from '../shared/protocol';
+import type { ControlBlock, FrameMeta, InputEvent, Platform, StudentMessage } from '../shared/protocol';
 import { INPUT_DRY_RUN, InputInjector } from './input';
 import { changed, send, state } from './state';
 
@@ -26,6 +26,16 @@ const STILL_PAUSE_MS = 250;
 const TEACHER = 'teacher';
 /** Testing: send still pictures straight away, as a computer where video can't start would. */
 const FORCE_STILLS = process.env.CM_VIEW_STILLS === '1';
+/**
+ * Live video that stops (Windows switching to a security prompt's desktop, a
+ * graphics driver reset, a monitor change) starts again this many times
+ * before the view carries on with still pictures.
+ */
+const MAX_VIDEO_RESTARTS = 3;
+/** Video that then runs this long without stopping earns its restarts back. */
+const RESTARTS_FORGIVEN_MS = 60_000;
+
+const clampBitrate = (bitrate: number) => Math.max(300_000, Math.min(8_000_000, bitrate));
 
 interface ViewSession {
   /** The monitor shown. */
@@ -34,12 +44,22 @@ interface ViewSession {
   relay: FrameRelay<StudentMessage>;
   startTimer: NodeJS.Timeout | null;
   stillsTimer: NodeJS.Timeout | null;
+  /** Times live video has been started again after stopping by itself, and when it last was. */
+  restarts: number;
+  restartedAt: number;
+  /** The bit rate the teacher last asked for, kept when video starts again. */
+  bitrate: number;
 }
 
 /** Open remote-view sessions; `control` holds the one allowed to send input. */
 const viewSessions = new Map<string, ViewSession>();
-let control: { sessionId: string; teacherPlatform: Platform } | null = null;
-const injector = new InputInjector();
+let control: { sessionId: string; teacherPlatform: Platform; blocked: ControlBlock | null } | null = null;
+/** The helper says what keeps the teacher's input from the window in front; the teacher is told. */
+const injector = new InputInjector((blocked) => {
+  if (!control || control.blocked === blocked) return;
+  control.blocked = blocked;
+  send({ type: 'control-blocked', sessionId: control.sessionId, reason: blocked });
+});
 let agent: BrowserWindow | null = null;
 /** This screen is being shown to the class. */
 let presenting = false;
@@ -103,7 +123,7 @@ export async function startView(sessionId: string, displayId?: string, bitrate =
     { keyframe: () => requestKeyframe(sessionId), viewers: () => {} },
     (id, meta) => ({ type: 'view-frame', sessionId: id, ...meta }),
   );
-  const view: ViewSession = { displayId: String(display.id), mode: 'starting', relay, startTimer: null, stillsTimer: null };
+  const view: ViewSession = { displayId: String(display.id), mode: 'starting', relay, startTimer: null, stillsTimer: null, restarts: 0, restartedAt: 0, bitrate: clampBitrate(bitrate) };
   viewSessions.set(sessionId, view);
   relay.start(sessionId);
   relay.ready(TEACHER, sessionId);
@@ -112,14 +132,46 @@ export async function startView(sessionId: string, displayId?: string, bitrate =
     fallBack(sessionId, 'still pictures were asked for (CM_VIEW_STILLS)');
     return;
   }
+  await startVideo(sessionId, view);
+}
+
+/** Asks the agent window to capture and encode the session's monitor. */
+async function startVideo(sessionId: string, view: ViewSession): Promise<void> {
+  view.mode = 'starting';
+  if (view.startTimer) clearTimeout(view.startTimer);
   view.startTimer = setTimeout(() => fallBack(sessionId, 'live video did not start within 10 seconds'), VIDEO_START_TIMEOUT_MS);
+  const display = displayFor(view.displayId);
   const source = (await sourceFor(display)) ?? (await sourceFor(display));
   if (viewSessions.get(sessionId) !== view || view.mode !== 'starting') return; // Stopped, or already on stills.
   if (!source) {
     fallBack(sessionId, 'the list of screens did not come back');
     return;
   }
-  toAgent({ type: 'start', sessionId, sourceId: source.id, bitrate: Math.max(300_000, Math.min(8_000_000, bitrate)) });
+  toAgent({ type: 'start', sessionId, sourceId: source.id, bitrate: view.bitrate });
+}
+
+/**
+ * The live capture stopped by itself: for example Windows switched to the
+ * secure desktop for a User Account Control prompt (nothing in the student's
+ * session can capture that), or the graphics driver reset. Without starting
+ * again the teacher would be left looking at the last picture for good.
+ * Starts the capture again, or carries on with still pictures.
+ */
+export function videoEnded(sessionId: string, reason: string): void {
+  const view = viewSessions.get(sessionId);
+  if (!view || view.mode === 'stills') return;
+  if (view.restarts >= MAX_VIDEO_RESTARTS) {
+    fallBack(sessionId, `live video kept stopping (${reason})`);
+    return;
+  }
+  view.restarts++;
+  view.restartedAt = Date.now();
+  console.warn(`[view] live video stopped (${reason}); starting it again`);
+  toAgent({ type: 'stop', sessionId });
+  // A moment's pause: the secure desktop or the new monitor setup settles first.
+  setTimeout(() => {
+    if (viewSessions.get(sessionId) === view && view.mode !== 'stills') void startVideo(sessionId, view);
+  }, 1000);
 }
 
 /** An encoded frame from the agent window. */
@@ -132,6 +184,7 @@ export function viewFrame(sessionId: string, meta: FrameMeta, data: Buffer): voi
     view.startTimer = null;
     send({ type: 'view-mode', sessionId, mode: 'video' });
   }
+  if (view.restarts && Date.now() - view.restartedAt > RESTARTS_FORGIVEN_MS) view.restarts = 0;
   view.relay.frame(sessionId, meta, data);
 }
 
@@ -164,7 +217,10 @@ export function requestKeyframe(sessionId: string): void {
 }
 
 export function setBitrate(sessionId: string, bitrate: number): void {
-  if (viewSessions.has(sessionId)) toAgent({ type: 'bitrate', sessionId, bitrate: Math.max(300_000, Math.min(8_000_000, bitrate)) });
+  const view = viewSessions.get(sessionId);
+  if (!view) return;
+  view.bitrate = clampBitrate(bitrate);
+  toAgent({ type: 'bitrate', sessionId, bitrate: view.bitrate });
 }
 
 export function endView(sessionId: string): void {
@@ -209,7 +265,7 @@ export function setControl(sessionId: string, enabled: boolean, teacherPlatform:
     send({ type: 'error', sessionId, message: (err as Error).message });
     return;
   }
-  control = { sessionId, teacherPlatform };
+  control = { sessionId, teacherPlatform, blocked: null };
   changed();
 }
 

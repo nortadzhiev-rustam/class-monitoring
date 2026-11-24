@@ -1,7 +1,8 @@
 // End-to-end check on one machine: starts a teacher console and student agents,
 // then exercises discovery, thumbnails, lock/unlock, remote view, remote control
-// (dry run: the real mouse is never moved), broadcast, auth, first-run setup,
-// selection targeting, late joiners, offline cards, card order and disconnect safety.
+// (dry run: the real mouse is never moved), muting (dry run: the sound is never
+// touched), broadcast, auth, first-run setup, selection targeting, late joiners,
+// offline cards, card order, settings kept across restarts and disconnect safety.
 //
 // Overlays open as small windows (CM_OVERLAY_WINDOWED) so the test never takes
 // over the screen. Screenshots go to tests/output/.
@@ -35,6 +36,7 @@ const base = {
   CM_PORT: '47811',
   CM_OVERLAY_WINDOWED: '1',
   CM_INPUT_DRY_RUN: '1',
+  CM_MUTE_DRY_RUN: '1',
   // No desktop notifications or Dock bouncing while the test runs.
   CM_QUIET: '1',
   // Log instead of opening the browser or restarting this computer.
@@ -131,6 +133,7 @@ await page.setViewportSize({ width: 1280, height: 800 }).catch(() => {});
 const student = await launchStudent('student');
 const helperLog = [];
 student.process().stdout.on('data', (d) => helperLog.push(String(d)));
+const studentLog = () => helperLog.join('');
 
 console.log('ClassMonitor end-to-end');
 
@@ -249,6 +252,22 @@ await step('remote control forwards mouse and keyboard (dry run)', async () => {
   await page.click('#viewer-control');
   await page.waitForSelector('.card:not(.controlled)', { state: 'attached', timeout: 10_000 });
   return 'Shift+click, then A, in order';
+});
+
+await step("remote control says when the student's computer won't take its input (simulated password prompt)", async () => {
+  // The dry-run helper reports this instead of looking at the real screen.
+  await student.evaluate(() => (process.env.CM_FAKE_INPUT_STATE = 'password-prompt'));
+  try {
+    await page.click('#viewer-control');
+    await page.waitForSelector('#stage-blocked:not([hidden])', { timeout: 10_000 });
+    const title = await page.textContent('#stage-blocked-title');
+    await page.screenshot({ path: path.join(out, '3b-control-blocked.png') });
+    await page.click('#viewer-control');
+    await page.waitForSelector('#stage-blocked', { state: 'hidden', timeout: 5000 });
+    return title;
+  } finally {
+    await student.evaluate(() => delete process.env.CM_FAKE_INPUT_STATE);
+  }
 });
 
 await step('closing the viewer ends the session', async () => {
@@ -439,6 +458,41 @@ await step('a raised hand reaches the help queue until the teacher clears it', a
   await chat.waitForFunction(() => document.getElementById('hand')?.textContent === 'Raise hand');
 });
 
+await step("ending a chat closes the student's chat window and clears the conversation", async () => {
+  await page.click('.tab[data-tab="chat"]');
+  if (await page.locator('#chat-thread').isHidden()) await page.click('#chat-list li');
+  await page.click('#chat-end');
+  await waitFor(async () => !pageOf(student, 'chat.html'), 10_000);
+  await page.waitForSelector('#chat-empty:not([hidden])', { timeout: 5000 });
+  // A new message starts a fresh conversation.
+  await page.hover(`${card('student')} .screen`);
+  await page.click(`${card('student')} [data-action="chat"]`);
+  await page.fill('#chat-text', 'Back again');
+  await page.press('#chat-text', 'Enter');
+  let chat = null;
+  await waitFor(async () => (chat = pageOf(student, 'chat.html')));
+  await chat.waitForSelector('.line.teacher:has-text("Back again")', { timeout: 10_000 });
+  const lines = await chat.locator('.line').count();
+  if (lines !== 1) throw new Error(`the student's chat still shows ${lines} lines`);
+  await page.click('#chat-end');
+  await waitFor(async () => !pageOf(student, 'chat.html'), 10_000);
+});
+
+await step('muting turns the sound off on the student, and back on (dry run)', async () => {
+  const mutes = () => (studentLog().match(/\[mute\] muted/g) ?? []).length;
+  const before = mutes();
+  await page.click('#sound');
+  await page.click('.menu button:has-text("Mute sound")');
+  await page.waitForSelector(`${card('student')} .pill:has-text("Muted")`, { timeout: 10_000 });
+  await waitFor(async () => mutes() > before, 10_000);
+  await toolbar().waitForSelector('.chip:has-text("Sound off")', { state: 'attached', timeout: 5000 });
+  await page.click('#sound');
+  await page.click('.menu button:has-text("Turn sound back on")');
+  await page.waitForSelector(`${card('student')} .pill:has-text("Muted")`, { state: 'detached', timeout: 10_000 });
+  await waitFor(async () => studentLog().lastIndexOf('[mute] unmuted') > studentLog().lastIndexOf('[mute] muted'), 10_000);
+  await toolbar().waitForSelector('.chip:has-text("Sound off")', { state: 'detached', timeout: 5000 });
+});
+
 await step('a poll collects answers live', async () => {
   await page.click('#poll');
   await page.fill('#poll-text', 'Which answer is right?');
@@ -521,7 +575,6 @@ await step('collected work lands in the teacher\'s folder', async () => {
   return path.relative(tmp, file);
 });
 
-const studentLog = () => helperLog.join('');
 
 await step('opening a website and an app reaches the student (dry run)', async () => {
   await page.click('#open');
@@ -854,11 +907,21 @@ await step('disconnected students stay as offline cards until forgotten', async 
   return placeholder;
 });
 
-await step('a student locked when the teacher disappears is unlocked', async () => {
+await step('a student locked when the teacher disappears is unlocked, and gets its sound back', async () => {
+  // Blocked apps and mute stay on through the restart below; the lock doesn't.
+  await page.click('#apps');
+  await page.click('.menu button:has-text("Block apps")');
+  await page.fill('#apps-list', 'cmblockme');
+  await page.click('#apps-on');
+  await page.click('#sound');
+  await page.click('.menu button:has-text("Mute sound")');
+  await page.waitForSelector(`${card('student')} .pill:has-text("Muted")`, { timeout: 10_000 });
+  await waitFor(async () => studentLog().lastIndexOf('[mute] muted') > studentLog().lastIndexOf('[mute] unmuted'), 10_000);
   await lockTarget();
   await waitFor(async () => overlayPages(student).length > 0);
   await teacher.close();
   await waitFor(async () => overlayPages(student).length === 0, 15_000);
+  await waitFor(async () => studentLog().lastIndexOf('[mute] unmuted') > studentLog().lastIndexOf('[mute] muted'), 10_000);
 });
 
 await step('the roster survives a teacher restart', async () => {
@@ -868,7 +931,26 @@ await step('the roster survives a teacher restart', async () => {
   await page.waitForSelector(`${card('student')}:not(.offline)`, { timeout: 20_000 });
   if (await page.locator(card('late')).count()) throw new Error('a forgotten student came back');
   await page.waitForSelector('.view-chip:has-text("Table 1")', { timeout: 5000 });
-  await page.waitForSelector(`${card('student')} .name:has-text("Ada Lovelace")`);
+});
+
+await step("signed-in names don't outlast the connection: the card shows the computer name again", async () => {
+  const name = await page.textContent(`${card('student')} .name`);
+  if (name === 'Ada Lovelace') throw new Error('the card still shows last lesson\'s name');
+  return name;
+});
+
+await step('blocked apps and mute come back after the restart; the lock does not', async () => {
+  await page.waitForSelector(`${card('student')} .pill:has-text("Apps blocked")`, { timeout: 10_000 });
+  await page.waitForSelector(`${card('student')} .pill:has-text("Muted")`, { timeout: 10_000 });
+  await waitFor(async () => studentLog().lastIndexOf('[mute] muted') > studentLog().lastIndexOf('[mute] unmuted'), 10_000);
+  if (overlayPages(student).length) throw new Error('the student is locked again');
+  await page.click('#sound');
+  await page.click('.menu button:has-text("Turn sound back on")');
+  await page.click('#apps');
+  await page.click('.menu button:has-text("Block apps")');
+  await page.click('#apps-off');
+  await page.waitForSelector(`${card('student')} .pill:has-text("Apps blocked")`, { state: 'detached', timeout: 10_000 });
+  await page.waitForSelector(`${card('student')} .pill:has-text("Muted")`, { state: 'detached', timeout: 10_000 });
 });
 
 await step('the card order survives the restart, and Sort by name resets it', async () => {

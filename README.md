@@ -12,7 +12,7 @@ The apps are called **Дидбон** (*Didbon*, Tajik for "lookout"): **Дидб
 | --- | --- |
 | Live thumbnails | Every student's screen every 2 s; with several monitors, all of them as arranged |
 | Remote view | Click a student to stream their screen (up to 1920×1200, 20 fps) over their encrypted link, switching between their monitors. If live video can't start on that computer, it shows still pictures a few times a second instead and says why |
-| Remote control | "Take control" sends your mouse and keyboard to the screen you're viewing; Cmd↔Ctrl swap between Mac and Windows |
+| Remote control | "Take control" sends your mouse and keyboard to the screen you're viewing; Cmd↔Ctrl swap between Mac and Windows. When the student's computer won't take them (a Windows User Account Control prompt, a window running as administrator, a macOS password prompt) the viewer says so, and the picture starts again by itself once the prompt has gone |
 | Lock screens | Full-screen lock with your message on every monitor. While it (or your shown screen) is up, the student's keyboard and mouse are blocked and the taskbar / Dock is hidden |
 | Show my screen | Your screen streamed full-screen to students; with several monitors, pick which one and switch while showing |
 | Show a student's screen | In remote view, **Show to class** puts that student's screen on everyone else's (it keeps going if you close the viewer; **Stop** ends it). The student's toolbar says their screen is being shown |
@@ -24,14 +24,14 @@ The apps are called **Дидбон** (*Didbon*, Tajik for "lookout"): **Дидб
 | Messages | A pop-up on students' screens until they click OK |
 | Student toolbar | A slim bar at the top of each student's screen while you're connected: who's connected, Raise hand, Chat (with unread count), Hand in work while you're collecting, and whether you're watching or controlling, or limiting websites or apps. It tucks into a small tab, slides out on hover, never takes the keyboard, and steps aside for the lock screen |
 | Help requests | Students raise a hand from the toolbar, the tray or chat; you get a Help queue and a "Needs help" badge |
-| Chat | One-to-one chat; the student's window opens when you write, without stealing their focus |
+| Chat | One-to-one chat; the student's window opens when you write, without stealing their focus. **End chat** closes it on the student's screen and clears the conversation |
 | Quick polls | Preset or custom answers, live results with names, each answer shown on the card |
 
 **Classroom**
 
 | Feature | How it works |
 | --- | --- |
-| Register | Students sign in with their name; see who's present or missing and export a CSV |
+| Register | Students sign in with their name; see who's present or missing and export a CSV. A card shows the signed-in name only while that computer stays connected: after it restarts or disconnects, or you close the console, it shows the computer's name again, ready for the next class |
 | Groups | Named groups as chips above the grid; any action can target a group |
 | Arrange computers | Drag cards into your own order, e.g. to match where the computers stand in the room. The order is kept across restarts, new computers join at the end, and **Sort by name** puts it back |
 | Send files | Hand out worksheets into students' `Documents/ClassMonitor/From teacher` |
@@ -41,13 +41,16 @@ The apps are called **Дидбон** (*Didbon*, Tajik for "lookout"): **Дидб
 
 | Feature | How it works |
 | --- | --- |
+| Sound | **Sound ▾ → Mute sound** turns the speakers off (headphones too, and it stays off if the student turns it back up); **Turn sound back on** puts each one back as it was. A card's ⋯ menu does one computer |
 | Open website / app | Opens a link in the default browser or an app by name |
 | Close all apps | **Apps ▾ → Close all apps** asks every open app to quit after a 15-second warning, the same way Cmd+Q or a window's ✕ would, so apps with unsaved work can ask the student first. Finder, File Explorer and Дидбон stay open |
 | Block apps | **Apps ▾ → Block apps**: named apps (with `*` wildcards) are closed whenever they start |
 | Websites | Block all websites in one go, or block-list / allow-list sites. The student app watches the browser's address bar and sends blocked sites to a "blocked" page, with nothing to install; the optional Дидбон Web Filter extension also stops them before they load |
 | Power | Log off, restart or shut down after a 15-second warning; Wake-on-LAN for offline computers |
 
-**Who does an action apply to?** Select cards (corner checkbox, Cmd/Ctrl-click, Shift-click) and actions go to the selection; with nothing selected they go to the group you're viewing, or everyone. The bar above the toolbar always says which. Lock, show my screen, polls, the register, collecting work, blocked apps and website rules also reach students who join late or reconnect.
+**Who does an action apply to?** Select cards (corner checkbox, Cmd/Ctrl-click, Shift-click) and actions go to the selection; with nothing selected they go to the group you're viewing, or everyone. The bar above the toolbar always says which. Lock, show my screen, polls, the register, collecting work, blocked apps, website rules and mute also reach students who join late or reconnect.
+
+**Blocked apps, website rules and mute stay as you left them** when you close the console and open it again (they're saved in `policy.json` next to the roster), so you set them up once rather than every lesson. Everything else (a lock, a poll, a shown screen) ends with the console.
 
 Students always see what's happening: the tray icon says when the teacher is connected, watching or controlling, and every message, block, file and power action shows up on their screen.
 
@@ -87,7 +90,7 @@ npm test           # unit tests
 npm run test:e2e   # both apps, end to end, on this computer
 ```
 
-The end-to-end suite starts a teacher console and several student agents and exercises every feature. Anything that would affect the computer running it is simulated: remote control, opening sites and apps, and power actions run in dry-run mode, the web filter extension is played by the test speaking Chrome's native-messaging protocol, and Wake-on-LAN packets go to a test port. Screenshots land in `tests/output/`. The multi-monitor steps only run when the computer has two or more displays.
+The end-to-end suite starts a teacher console and several student agents and exercises every feature. Anything that would affect the computer running it is simulated: remote control, muting, opening sites and apps, and power actions run in dry-run mode, the web filter extension is played by the test speaking Chrome's native-messaging protocol, and Wake-on-LAN packets go to a test port. Screenshots land in `tests/output/`. The multi-monitor steps only run when the computer has two or more displays.
 
 ```bash
 npm run test:load  # "Show my screen" to 24 students on this computer
@@ -162,18 +165,19 @@ To try it before publishing: load `dist/extension` unpacked (chrome://extensions
 ```
 
 - **Security** (`src/shared/secure-channel.ts`): teacher and student prove to each other that they know the class key (HMAC challenge-response), so a rogue console can't control students and a rogue agent can't join. Every message after that is AES-256-GCM encrypted with per-session keys, with replay protection; that includes every screen stream (remote view, and screens shown to the class), so there's no second network path to open in firewalls. Anything a student sends (names, files, status) is validated by the console before use.
-- **Policy** (`src/teacher/policy.ts`): what the teacher has switched on for each student (lock, broadcast, poll, register, collection, blocked apps, website rules) is sent whole whenever it changes and on every connect, so late joiners and reconnects match their class. If the teacher disconnects, the student drops all of it.
+- **Policy** (`src/teacher/policy.ts`): what the teacher has switched on for each student (lock, broadcast, poll, register, collection, blocked apps, website rules, mute) is sent whole whenever it changes and on every connect, so late joiners and reconnects match their class. If the teacher disconnects, the student drops all of it (the sound comes back too). The console saves blocked apps, website rules and mute and sends them again when it starts.
+- **Mute** (`src/student/mute.ts`): a helper keeps the default speakers muted while the teacher wants them off and puts each one back as it was when it stops, also if the student app quits or crashes: Core Audio on macOS (`native/macos/InputHelper.swift --mute`), the Windows audio endpoint API on Windows (`native/windows/audio-helper.ps1`).
 - **Files** travel in 256 KB chunks inside the encrypted channel, checksum-verified, with safe file names and no overwriting.
 - **Screens** are encoded once, by the computer whose screen it is, in hardware where possible (WebCodecs H.264, `src/renderer-shared/screen-encoder.ts`), and sent as frames over the encrypted links; `screen-decoder.ts` draws them. For **Show my screen** and **Show to class**, `src/shared/frame-relay.ts` on the teacher's computer sends the same frames to every student, so the work is the same for any class size, and a student whose link backs up skips ahead to the next keyframe instead of holding back the others. Remote view uses the same relay on the student's computer to pace its stream to the teacher; if live video can't start there (`src/student/session.ts`), it sends still JPEG pictures through the same path.
-- **Remote control** maps 0..1 positions on the viewed monitor to desktop coordinates, injected by `native/macos/InputHelper.swift` (CGEvent) or `native/windows/input-helper.ps1` (SendInput across the virtual desktop).
+- **Remote control** maps 0..1 positions on the viewed monitor to desktop coordinates, injected by `native/macos/InputHelper.swift` (CGEvent) or `native/windows/input-helper.ps1` (SendInput across the virtual desktop). The OS drops input it won't deliver without saying so, so the helpers also check once a second what's in front (Windows: the secure desktop, or a window of a program running as administrator; macOS: a password prompt) and the viewer explains it. If the screen capture stops by itself (as it can when Windows switches to a security prompt's desktop), the student app starts it again.
 - **Web filter**: the address watcher (`src/student/web-watch.ts`) reads each browser window's address once a second (UI Automation on Windows, AppleScript on macOS) and sends blocked sites to `src/student/block-page.ts`, a page served on `127.0.0.1` only. The extension (`src/extension/`) uses declarativeNetRequest; the browser starts the student app as its native-messaging host (`src/student/native-host.ts`), which relays to the agent over a local socket guarded by a per-install secret.
 
 ## Known limits
 
-- **Not yet run on Windows.** Everything is tested end to end on macOS. The Windows paths are written but unverified: the input helper (including multi-monitor and high-DPI coordinates), `tasklist`-based app blocking, `shutdown`, native-messaging registration in the registry, and installer firewall rules.
+- **Not yet run on Windows.** Everything is tested end to end on macOS. The Windows paths are written but unverified: the input helper (including multi-monitor and high-DPI coordinates, and spotting UAC prompts and administrator windows), the audio helper behind mute, `tasklist`-based app blocking, `shutdown`, native-messaging registration in the registry, and installer firewall rules.
 - **Multi-monitor** compositing, the screen switcher and control on a second screen are unit-tested, but the end-to-end step was skipped on the single-display development Mac.
 - **The web filter** extension has been exercised through its native-messaging bridge, not yet inside a real Chrome or Edge. The address watcher's Windows helper (UI Automation) hasn't run on Windows yet; the end-to-end suite drives the watcher through a simulated browser.
-- **Lock screen and shown screen** block the keyboard and mouse with the student's own rights. On Windows, low-level hooks (`native/windows/lock-helper.ps1`) swallow every key including the Windows key and Alt+Tab, and the taskbar is hidden; Ctrl+Alt+Del can't be blocked, so a student can still reach Task Manager from there unless Group Policy turns it off. On macOS an event tap does the same and needs the **Accessibility** permission (the same one remote control needs); without it only kiosk mode protects the lock screen. Remote control can't drive elevated windows or UAC prompts; that needs a SYSTEM service.
+- **Lock screen and shown screen** block the keyboard and mouse with the student's own rights. On Windows, low-level hooks (`native/windows/lock-helper.ps1`) swallow every key including the Windows key and Alt+Tab, and the taskbar is hidden; Ctrl+Alt+Del can't be blocked, so a student can still reach Task Manager from there unless Group Policy turns it off. On macOS an event tap does the same and needs the **Accessibility** permission (the same one remote control needs); without it only kiosk mode protects the lock screen. Remote control can't drive elevated windows or UAC prompts (renaming the PC, adding a user and other administrator settings ask for one); that needs a signed helper with UI Access or a SYSTEM service. The viewer tells the teacher when one is in the way, and someone at the computer has to answer it.
 - **App blocking and power** act with the student's own rights: they can only close the student's own programs, and power actions need the OS to allow standard users to restart (the default on Windows client editions).
 - **Showing a screen to the class** encodes it once but sends it to each student separately, through the teacher's computer: its link carries up to ~30 Mbps for a full class (usually far less for screen content), fine on wired Ethernet. A teacher on busy Wi-Fi, or much larger rooms, would need multicast.
 - Anyone who can read `student.json` has the class key. Use a different key per room and keep the file admin-writable.

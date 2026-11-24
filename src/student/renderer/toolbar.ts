@@ -79,6 +79,7 @@ function isNews(s: ToolbarState, before: ToolbarState | null): boolean {
     (s.controlled && !before.controlled) ||
     (s.collect !== null && s.collect !== before.collect) ||
     (s.presenting && !before.presenting) ||
+    (s.muted && !before.muted) ||
     s.unread > before.unread
   );
 }
@@ -109,6 +110,7 @@ function render(s: ToolbarState): void {
   else if (s.viewing && !s.presenting) chips.push(chip('viewing', 'i-eye', 'Teacher is watching'));
   if (s.webLimited) chips.push(chip('limits', 'i-globe', 'Websites limited'));
   if (s.appsBlocked) chips.push(chip('limits', 'i-block', 'Apps blocked'));
+  if (s.muted) chips.push(chip('limits', 'i-muted', 'Sound off'));
   byId('chips').replaceChildren(...chips);
 
   if (isNews(s, previous)) open(PEEK_MS);

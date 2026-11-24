@@ -9,10 +9,12 @@ import { WebSocketServer, type WebSocket } from 'ws';
 import {
   APP_ID,
   BEACON_INTERVAL_MS,
+  CONTROL_BLOCKS,
   DISCOVERY_PORT,
   LIMITS,
   PROTOCOL_VERSION,
   type Beacon,
+  type ControlBlock,
   type FileMessage,
   type FrameMeta,
   type Platform,
@@ -26,7 +28,7 @@ import type { FileLink } from '../shared/file-transfer';
 import { acceptStudent, CLOSE_REPLACED, deriveClassKey, type SecureChannel } from '../shared/secure-channel';
 import type { ViewerLink } from '../shared/frame-relay';
 import type { StudentStatus, StudentSummary, Target, TeacherSettings } from './ipc';
-import { PolicyTable } from './policy';
+import { PolicyTable, type SavedPolicies } from './policy';
 
 export interface ServerConfig extends TeacherSettings {
   port: number;
@@ -62,6 +64,10 @@ export interface ServerEvents {
   file: [string, FileMessage, Buffer | undefined];
   /** A computer at this address tried to join with a different protocol version. */
   'version-mismatch': [string];
+  /** During remote control: what keeps the teacher's input from the student's window in front (null: nothing). */
+  'control-blocked': [string, string, ControlBlock | null];
+  /** The blocked apps, website rules or mute changed: save them for next time. */
+  lasting: [SavedPolicies];
 }
 
 const HEARTBEAT_MS = 10_000;
@@ -74,11 +80,19 @@ export class ClassServer extends EventEmitter<ServerEvents> {
   private heartbeatTimer: NodeJS.Timeout | null = null;
   private classKey: Buffer;
   private readonly students = new Map<string, Student>();
-  private readonly policies = new PolicyTable();
+  private readonly policies: PolicyTable;
+  /** The lasting settings as last reported, to notice when they change. */
+  private savedLasting: string;
 
-  constructor(private config: ServerConfig) {
+  /** `saved`: the blocked apps, website rules and mute the teacher left on last time. */
+  constructor(
+    private config: ServerConfig,
+    saved?: SavedPolicies,
+  ) {
     super();
     this.classKey = deriveClassKey(config.classKey);
+    this.policies = new PolicyTable(saved);
+    this.savedLasting = JSON.stringify(this.policies.lasting());
   }
 
   get settings(): ServerConfig {
@@ -141,6 +155,12 @@ export class ClassServer extends EventEmitter<ServerEvents> {
     return this.policies.get(id);
   }
 
+  /** A computer the teacher forgot: its own settings go too. */
+  forget(id: string): void {
+    this.policies.forget(id);
+    this.noticeLasting();
+  }
+
   /** Connected students among the target ("everyone" means everyone connected). */
   onlineIn(target: Target): string[] {
     return target.everyone ? [...this.students.keys()] : target.ids.filter((id) => this.students.has(id));
@@ -181,6 +201,15 @@ export class ClassServer extends EventEmitter<ServerEvents> {
       this.send(id, { type: 'policy', policy });
       this.emit('policy', id, policy);
     }
+    this.noticeLasting();
+  }
+
+  private noticeLasting(): void {
+    const lasting = this.policies.lasting();
+    const json = JSON.stringify(lasting);
+    if (json === this.savedLasting) return;
+    this.savedLasting = json;
+    this.emit('lasting', lasting);
   }
 
   private listen(): Promise<void> {
@@ -296,6 +325,12 @@ export class ClassServer extends EventEmitter<ServerEvents> {
       }
       case 'app-closed':
         if (typeof msg.name === 'string' && this.policies.get(id).apps) this.emit('app-closed', id, msg.name.slice(0, 60));
+        break;
+      case 'control-blocked':
+        if (typeof msg.sessionId === 'string') {
+          const reason = CONTROL_BLOCKS.find((block) => block === msg.reason) ?? null;
+          this.emit('control-blocked', id, msg.sessionId.slice(0, 64), reason);
+        }
         break;
       case 'poll-answer': {
         const poll = this.policies.get(id).poll;

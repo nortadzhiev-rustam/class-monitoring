@@ -1,7 +1,9 @@
 // Every student computer this console has seen, kept in roster.json so absent
-// students still show up (greyed out), and so names, groups, the card order
-// and Wake-on-LAN survive restarts. Groups and the order live here too, since
-// they are lists of these ids.
+// students still show up (greyed out), and so groups, the card order and
+// Wake-on-LAN survive restarts. Groups and the order live here too, since they
+// are lists of these ids. The name a student signs in with only lasts while
+// their computer is connected: when it disconnects (restart, network, the
+// student app or this console closing) the card shows the computer's name again.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -21,7 +23,8 @@ export class Roster {
   constructor(private readonly file: string) {
     try {
       const saved = JSON.parse(fs.readFileSync(file, 'utf8')) as { students?: RosterEntry[]; groups?: Group[]; order?: string[] };
-      for (const entry of saved.students ?? []) if (entry?.id) this.entries.set(entry.id, entry);
+      // Last lesson's signed-in names don't carry over (see above).
+      for (const entry of saved.students ?? []) if (entry?.id) this.entries.set(entry.id, { ...entry, name: undefined });
       this.groupList = cleanGroups(saved.groups ?? []);
       this.orderList = cleanOrder(saved.order);
     } catch (err) {
@@ -41,6 +44,7 @@ export class Roster {
   seen(info: StudentInfo, address: string): RosterEntry {
     const entry: RosterEntry = {
       ...this.entries.get(info.id),
+      name: undefined,
       id: info.id,
       hostname: info.hostname,
       username: info.username,
@@ -58,6 +62,7 @@ export class Roster {
     const entry = this.entries.get(id);
     if (!entry) return;
     entry.lastSeen = Date.now();
+    entry.name = undefined;
     this.scheduleSave();
   }
 
@@ -68,7 +73,7 @@ export class Roster {
     this.scheduleSave();
   }
 
-  /** The name the student typed when signing in to a register. */
+  /** The name the student typed when signing in to a register, until their computer disconnects. */
   setName(id: string, name: string): void {
     const entry = this.entries.get(id);
     if (!entry) return;

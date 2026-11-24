@@ -1,6 +1,6 @@
-// Toolbar actions that act on the students' computers themselves: open a
-// website or app, close or block apps, website rules, and power (log off,
-// restart, shut down, wake).
+// Toolbar actions that act on the students' computers themselves: sound,
+// open a website or app, close or block apps, website rules, and power (log
+// off, restart, shut down, wake).
 
 import type { PowerAction } from '../../shared/protocol';
 import { MAX_DOMAINS, normaliseDomain, type WebRules } from '../../shared/web-rules';
@@ -24,6 +24,21 @@ async function report(sent: Promise<number>, done: (n: number) => string): Promi
 }
 
 const forWhom = (to: Resolved) => (to.target.everyone ? 'everyone' : to.label);
+
+// ---------------------------------------------------------------- sound
+
+/** Sound ▾: turn the computers' sound off, or back on. Like blocked apps, it stays as set when the console restarts. */
+export function soundMenu(anchor: HTMLElement, to: Resolved): void {
+  showMenu(anchor, [
+    { label: 'Mute sound', action: () => setMute(to, true) },
+    { label: 'Turn sound back on', action: () => setMute(to, false) },
+  ]);
+}
+
+export function setMute(to: Resolved, mute: boolean): void {
+  api.setMute(to.target, mute);
+  toast(mute ? `Sound off for ${forWhom(to)}.` : `Sound back on for ${forWhom(to)}.`, 'info');
+}
 
 // ---------------------------------------------------------------- open
 

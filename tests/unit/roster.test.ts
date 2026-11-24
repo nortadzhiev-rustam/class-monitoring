@@ -56,3 +56,26 @@ test('a roster from before card ordering loads in name order', () => {
   fs.writeFileSync(file, JSON.stringify({ students: [], groups: [] }));
   assert.deepEqual(new Roster(file).order(), []);
 });
+
+test('a signed-in name lasts only while the computer is connected', () => {
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'roster-')), 'roster.json');
+  const roster = new Roster(file);
+  roster.seen(info('id-aaaaaaaa', 'PC-01'), '10.0.0.5');
+  roster.seen(info('id-bbbbbbbb', 'PC-02'), '10.0.0.6');
+  roster.setName('id-aaaaaaaa', 'Ada Lovelace');
+  roster.setName('id-bbbbbbbb', 'Alan Turing');
+  assert.equal(roster.get('id-aaaaaaaa')?.name, 'Ada Lovelace');
+
+  // Disconnected (restart, network, the student app closing): back to the computer's name.
+  roster.left('id-aaaaaaaa');
+  assert.equal(roster.get('id-aaaaaaaa')?.name, undefined);
+  // Reconnecting while still listed online doesn't bring it back either.
+  roster.setName('id-aaaaaaaa', 'Ada Lovelace');
+  roster.seen(info('id-aaaaaaaa', 'PC-01'), '10.0.0.5');
+  assert.equal(roster.get('id-aaaaaaaa')?.name, undefined);
+
+  // The console closing: nobody's name carries over to the next start.
+  roster.flush();
+  assert.equal(new Roster(file).get('id-bbbbbbbb')?.name, undefined);
+  assert.equal(new Roster(file).get('id-bbbbbbbb')?.hostname, 'PC-02');
+});

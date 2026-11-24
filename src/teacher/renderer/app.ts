@@ -65,10 +65,17 @@ function cardMenu(s: Student, at: HTMLElement | { x: number; y: number }): void 
     items.push(
       { label: 'View screen', action: () => viewer.open(s, false) },
       { label: 'Chat', action: () => chat.openThread(s.id) },
+      ...(chat.hasThread(s.id) ? [{ label: 'End chat', action: () => chat.endThread(s.id) }] : []),
       { label: 'Send message…', action: () => sendMessage(targets.only(s.id)) },
       'separator',
     );
   }
+  // Like the group actions below: the whole selection if this card is in it.
+  const several = ids.length > 1;
+  const these: targets.Resolved = several ? { target: { ids, everyone: false }, label: who, online: 0 } : targets.only(s.id);
+  if (s.policy.mute) items.push({ label: several ? `Turn sound back on for ${who}` : 'Turn sound back on', action: () => control.setMute(these, false) });
+  else items.push({ label: several ? `Mute ${who}` : 'Mute sound', action: () => control.setMute(these, true) });
+  items.push('separator');
   for (const g of groups.list()) {
     const inGroup = ids.every((id) => g.members.includes(id));
     items.push({
@@ -137,6 +144,7 @@ $('#lock').addEventListener('click', () => {
   dialogs.askLock(to, (message) => api.lock(to.target, message));
 });
 $('#unlock').addEventListener('click', () => api.unlock(targets.current().target));
+$('#sound').addEventListener('click', () => control.soundMenu($('#sound'), targets.current()));
 $('#broadcast').addEventListener('click', () => broadcast.toggle($('#broadcast'), targets.current));
 $('#message').addEventListener('click', () => sendMessage(targets.current()));
 $('#poll').addEventListener('click', () => poll.openDialog(targets.current()));
@@ -223,6 +231,9 @@ api.onEvent((event: TeacherEvent) => {
       break;
     case 'broadcast-viewers':
       broadcast.viewers(event.count);
+      break;
+    case 'control-blocked':
+      viewer.setBlocked(event.sessionId, event.reason);
       break;
     case 'student-error': {
       const s = store.get(event.id);

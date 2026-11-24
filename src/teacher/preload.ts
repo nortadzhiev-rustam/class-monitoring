@@ -22,6 +22,7 @@ const api: TeacherApi = {
   exhibitStop: () => ipcRenderer.send('teacher:exhibit-stop'),
   message: (target, text) => ipcRenderer.invoke('teacher:message', target, text),
   chat: (id, text) => ipcRenderer.invoke('teacher:chat', id, text),
+  chatClose: (id) => ipcRenderer.send('teacher:chat-close', id),
   handClear: (id) => ipcRenderer.send('teacher:hand-clear', id),
   pollStart: (target, question, choices) => ipcRenderer.invoke('teacher:poll-start', target, question, choices),
   pollEnd: () => ipcRenderer.send('teacher:poll-end'),
@@ -43,6 +44,7 @@ const api: TeacherApi = {
   setApps: (target, apps) => ipcRenderer.send('teacher:set-apps', target, apps),
   wake: (ids) => ipcRenderer.invoke('teacher:wake', ids),
   setWeb: (target, rules) => ipcRenderer.send('teacher:set-web', target, rules),
+  setMute: (target, mute) => ipcRenderer.send('teacher:set-mute', target, mute),
   onEvent: (listener) => {
     ipcRenderer.on('teacher:event', (_e, event: TeacherEvent) => listener(event));
   },

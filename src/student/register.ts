@@ -1,5 +1,8 @@
 // Attendance register: while the teacher has one open, the student signs in
-// with their name. The name is remembered for next time.
+// with their name. The name is kept for further registers while this computer
+// stays connected to the teacher, and forgotten when the connection ends
+// (the teacher closes the console, the computer restarts or drops off the
+// network), since the next lesson may be someone else's at this computer.
 
 import { app } from 'electron';
 import { execFile } from 'node:child_process';
@@ -11,16 +14,17 @@ import { send, state } from './state';
 
 const signedIn = new Set<string>();
 let osName: Promise<string> | null = null;
+/** The name typed in this connection's registers, offered again in the next one. */
+let sessionName = '';
 
-const profileFile = () => path.join(app.getPath('userData'), 'profile.json');
-
-function savedName(): string {
-  try {
-    return String(JSON.parse(fs.readFileSync(profileFile(), 'utf8')).name ?? '');
-  } catch {
-    return '';
-  }
+/** The teacher went away: the next sign-in starts from the account's name again. */
+export function forgetSignIn(): void {
+  sessionName = '';
+  signedIn.clear();
 }
+
+// Earlier versions kept the name on disk for every later lesson; drop it.
+app.whenReady().then(() => fs.rm(path.join(app.getPath('userData'), 'profile.json'), { force: true }, () => {}));
 
 function run(command: string, args: string[]): Promise<string> {
   return new Promise((resolve) => {
@@ -42,7 +46,7 @@ function accountName(): Promise<string> {
 export async function showRegister(registerId: string | null): Promise<void> {
   removePrompts((c) => c.kind === 'sign-in' && c.registerId !== registerId);
   if (!registerId || signedIn.has(registerId) || findPrompt(`register-${registerId}`)) return;
-  const name = savedName() || (await accountName());
+  const name = sessionName || (await accountName());
   showPrompt({
     id: `register-${registerId}`,
     kind: 'sign-in',
@@ -63,11 +67,7 @@ onPromptAction('sign-in', (card, action, value) => {
   }
   send({ type: 'sign-in', registerId: card.registerId, name });
   signedIn.add(card.registerId);
-  try {
-    fs.writeFileSync(profileFile(), JSON.stringify({ name }));
-  } catch {
-    // Not remembered; the student just types it again next time.
-  }
+  sessionName = name;
   showPrompt({ ...card, name, done: true, error: null });
   setTimeout(() => removePrompt(card.id), 4000);
 });

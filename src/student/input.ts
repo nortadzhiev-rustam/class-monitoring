@@ -6,12 +6,14 @@
 //   w <dx> <dy>                   scroll by pixels (DOM wheel deltas)
 //   k <code> <down> <extended>    native key code (macOS kVK / Windows VK)
 //   r                             release every held key and button
+// and prints "state <why>" when what's in front changes: "ok", or something
+// remote control can't reach (see ControlBlock in protocol.ts).
 
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import fs from 'node:fs';
 import { resourcePath } from '../shared/electron-setup';
 import { nativeKey } from '../shared/keymap';
-import type { InputEvent, Platform } from '../shared/protocol';
+import { CONTROL_BLOCKS, type ControlBlock, type InputEvent, type Platform } from '../shared/protocol';
 
 /** Testing: the helper logs events to stdout instead of moving the real mouse. */
 export const INPUT_DRY_RUN = process.env.CM_INPUT_DRY_RUN === '1';
@@ -36,8 +38,18 @@ const num = (n: number, digits = 0) => (Number.isFinite(n) ? n.toFixed(digits) :
 /** Turns 0..1 coordinates on the viewed monitor into desktop coordinates. */
 export type ToDesktop = (nx: number, ny: number) => { x: number; y: number };
 
+/** A "state" line from the helper: what keeps input from reaching the window in front, or null for nothing. */
+export function parseState(line: string): ControlBlock | null | undefined {
+  const match = /^state (\S+)$/.exec(line.trim());
+  if (!match) return undefined;
+  return CONTROL_BLOCKS.find((block) => block === match[1]) ?? null;
+}
+
 export class InputInjector {
   private helper: ChildProcessWithoutNullStreams | null = null;
+
+  /** `onState` hears what the helper says it can't reach in front (null: it can again). */
+  constructor(private readonly onState: (block: ControlBlock | null) => void = () => {}) {}
 
   /** Throws if this platform has no helper (e.g. the macOS binary wasn't built). */
   start(): void {
@@ -46,7 +58,17 @@ export class InputInjector {
     if (!cmd) throw new Error('Remote control helper is missing on this computer.');
     const helper = spawn(cmd.command, cmd.args, { stdio: 'pipe', windowsHide: true });
     helper.stderr.on('data', (d) => console.warn('[input-helper]', String(d).trim()));
-    if (INPUT_DRY_RUN) helper.stdout.on('data', (d) => console.log(String(d).trim().replace(/^/gm, '[input-helper] ')));
+    let partial = '';
+    helper.stdout.on('data', (d) => {
+      const lines = (partial + String(d)).split(/\r?\n/);
+      partial = lines.pop() ?? '';
+      for (const line of lines) {
+        const state = parseState(line);
+        if (state !== undefined) {
+          if (this.helper === helper) this.onState(state);
+        } else if (INPUT_DRY_RUN && line.trim()) console.log(`[input-helper] ${line.trim()}`);
+      }
+    });
     helper.on('error', (err) => console.warn('[input-helper] failed:', err.message));
     helper.on('exit', () => {
       if (this.helper === helper) this.helper = null;
@@ -59,6 +81,7 @@ export class InputInjector {
     this.write('r');
     this.helper?.stdin.end();
     this.helper = null;
+    this.onState(null);
   }
 
   inject(events: InputEvent[], teacherPlatform: Platform, toDesktop: ToDesktop): void {

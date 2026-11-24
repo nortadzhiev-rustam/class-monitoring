@@ -32,6 +32,8 @@
     <symbol id="i-block" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M6.5 6.5l11 11"/></symbol>
     <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3v9M7.5 6.5a7 7 0 1 0 9 0"/></symbol>
     <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.6 3.5 5.4 3.5 8.5s-1 5.9-3.5 8.5c-2.5-2.6-3.5-5.4-3.5-8.5s1-5.9 3.5-8.5z"/></symbol>
+    <symbol id="i-sound" viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></symbol>
+    <symbol id="i-muted" viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M16 9.5l5 5M21 9.5l-5 5"/></symbol>
     <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="6.5" height="6.5" rx="1"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1"/></symbol>
   </svg>
 
@@ -73,6 +75,7 @@
   <div class="actionbar" id="actionbar">
     <button class="btn" id="lock" type="button"><svg class="icon"><use href="#i-lock"/></svg>Lock</button>
     <button class="btn" id="unlock" type="button"><svg class="icon"><use href="#i-unlock"/></svg>Unlock</button>
+    <button class="btn" id="sound" type="button" title="Sound: mute students' computers, or turn the sound back on" aria-label="Sound"><svg class="icon"><use href="#i-sound"/></svg><svg class="icon caret"><use href="#i-down"/></svg></button>
     <button class="btn primary" id="broadcast" type="button"><svg class="icon"><use href="#i-screen"/></svg><span>Show my screen</span><svg class="icon caret"><use href="#i-down"/></svg></button>
     <span class="divider"></span>
     <button class="btn" id="message" type="button"><svg class="icon"><use href="#i-message"/></svg>Message</button>
@@ -130,6 +133,7 @@
           <header class="thread-head">
             <button class="btn icon-only small" id="chat-back" type="button" title="All conversations"><svg class="icon"><use href="#i-back"/></svg></button>
             <strong id="chat-with"></strong>
+            <button class="btn small" id="chat-end" type="button" title="Close the chat window on the student's computer and clear this conversation">End chat</button>
           </header>
           <div class="lines" id="chat-lines"></div>
           <form class="composer" id="chat-form">
@@ -239,6 +243,10 @@
       <canvas id="viewer-screen"></canvas>
       <div class="stage-status" id="stage-status">Connecting…</div>
       <div class="stage-note" id="stage-note" hidden></div>
+      <div class="stage-blocked" id="stage-blocked" role="status" hidden>
+        <strong id="stage-blocked-title"></strong>
+        <span id="stage-blocked-text"></span>
+      </div>
     </div>
   </div>
 

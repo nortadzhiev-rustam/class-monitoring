@@ -156,7 +156,9 @@ body.darwin .topbar { padding-left: 84px; }
   border-bottom: 1px solid var(--border);
 }
 .viewbar { padding-bottom: 0; border-bottom: 0; }
-.actionbar { flex-wrap: wrap; }
+.actionbar { flex-wrap: wrap; gap: 6px; }
+/* A little tighter than elsewhere, so every action fits on one row in the default 1280-wide window. */
+.actionbar .btn { padding: 0 10px; }
 
 .views { display: flex; gap: 6px; flex-wrap: wrap; }
 .view-chip {
@@ -436,6 +438,27 @@ body.darwin .viewer-bar { padding-left: 84px; }
   font-size: 12px;
 }
 .stage-note[hidden] { display: none; }
+/* Remote control can't reach what's in front on the student's computer: say why, over the picture. */
+.stage-blocked {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(560px, calc(100% - 24px));
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--warn-soft);
+  color: var(--text);
+  box-shadow: var(--shadow-lg);
+  font-size: 13px;
+  line-height: 1.4;
+  pointer-events: none;
+}
+.stage-blocked strong { color: var(--warn); }
+.stage-blocked[hidden] { display: none; }
 .stage.controlling { cursor: crosshair; box-shadow: inset 0 0 0 3px var(--accent); }
 .stage-status {
   position: absolute;
@@ -612,6 +635,7 @@ code { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 0.9
 .thread { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .thread[hidden] { display: none; }
 .thread-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+.thread-head strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lines { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding: 12px; }
 .line { max-width: 85%; display: flex; flex-direction: column; gap: 2px; }
 .line.teacher { align-self: flex-end; align-items: flex-end; }

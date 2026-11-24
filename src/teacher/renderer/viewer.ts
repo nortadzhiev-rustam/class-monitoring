@@ -5,7 +5,7 @@
 
 import { ScreenDecoder } from '../../renderer-shared/screen-decoder';
 import { orderDisplays } from '../../shared/displays';
-import type { FrameMeta, InputEvent } from '../../shared/protocol';
+import type { ControlBlock, FrameMeta, InputEvent } from '../../shared/protocol';
 import { $, api, OS_LABEL } from './dom';
 import * as store from './store';
 import type { Student } from './store';
@@ -37,6 +37,27 @@ const stage = $('#stage');
 const canvas = $<HTMLCanvasElement>('#viewer-screen');
 const stageStatus = $('#stage-status');
 const stageNote = $('#stage-note');
+const stageBlocked = $('#stage-blocked');
+
+/**
+ * What the student's computer says keeps remote control from the window in
+ * front. The OS drops that input without a word, so without this the teacher
+ * just sees a frozen picture or clicks that do nothing.
+ */
+const BLOCKED: Record<ControlBlock, { title: string; text: string }> = {
+  'secure-desktop': {
+    title: 'Windows is showing a security prompt',
+    text: 'A User Account Control prompt (or the Ctrl+Alt+Del or lock screen) is up on this computer. Windows keeps it away from remote control and screen sharing, so the picture stands still and clicks do nothing until someone at the computer answers it.',
+  },
+  elevated: {
+    title: 'The window in front runs as administrator',
+    text: "Windows doesn't let remote control click or type in programs running as administrator (such as System Properties, Computer Management or user account tools). Close it at the student's computer, or click another window to carry on.",
+  },
+  'password-prompt': {
+    title: 'macOS is asking for a password',
+    text: "Password prompts don't show in remote view and may not accept typing from remote control. Answer or cancel it at the student's computer.",
+  },
+};
 
 export function init(options: {
   toggleLock: (s: Student) => void;
@@ -81,6 +102,7 @@ export function open(s: Student, control: boolean, displayId?: string): void {
 
   stageStatus.textContent = 'Connecting…';
   stageNote.hidden = true;
+  stageBlocked.hidden = true;
   $('#viewer-name').textContent = store.displayName(s);
   $('#viewer-meta').textContent = `${s.username} · ${OS_LABEL[s.platform] ?? s.platform} · ${s.address}`;
   renderStatus();
@@ -155,6 +177,15 @@ export function studentLeft(id: string): void {
   setControl(false);
 }
 
+/** While controlling: what keeps the teacher's input from the student's window in front, or null once nothing does. */
+export function setBlocked(sessionId: string, reason: ControlBlock | null): void {
+  if (viewer?.sessionId !== sessionId) return;
+  const shown = viewer.control && reason ? BLOCKED[reason] : null;
+  stageBlocked.hidden = !shown;
+  $('#stage-blocked-title').textContent = shown?.title ?? '';
+  $('#stage-blocked-text').textContent = shown?.text ?? '';
+}
+
 /** The student reported a problem with this session (e.g. no Accessibility permission). */
 export function sessionFailed(sessionId: string | undefined): void {
   if (viewer && sessionId === viewer.sessionId) setControl(false);
@@ -162,7 +193,10 @@ export function sessionFailed(sessionId: string | undefined): void {
 
 function setControl(enabled: boolean): void {
   if (!viewer || viewer.control === enabled) return;
-  if (!enabled) releaseHeld();
+  if (!enabled) {
+    releaseHeld();
+    stageBlocked.hidden = true;
+  }
   viewer.control = enabled;
   api.control(viewer.id, viewer.sessionId, enabled);
   stage.classList.toggle('controlling', enabled);
