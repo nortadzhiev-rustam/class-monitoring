@@ -104,6 +104,8 @@ The icons are drawn in `build/icon-teacher.svg` and `build/icon-student.svg`. Af
 
 ## Deploying to a classroom
 
+Build the installers on a Mac: `npm run dist:teacher` and `npm run dist:student` each make both the Windows and the Mac installer, in `release/teacher/` and `release/student/`. For one platform only, add `:win` or `:mac` (for example `npm run dist:student:win`); on a Windows PC, only the `:win` ones work.
+
 1. **Teacher:** install Дидбон Омӯзгор (`npm run dist:teacher` makes `Didbon-Teacher-Setup-<version>.exe` and a `.dmg`). On first run it generates a class key. Open **Class settings** to see it, change the room name, and copy the student config.
 2. **Students:** install Дидбон Хонанда (`npm run dist:student` makes `Didbon-Student-Setup-<version>.exe` and a `.pkg`). Then either:
 
