@@ -1,7 +1,7 @@
 {
   "name": "class-monitor",
   "productName": "ClassMonitor",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "description": "LAN classroom monitoring: a teacher console and a student agent for Windows and macOS.",
   "main": "dist/teacher/main.js",
