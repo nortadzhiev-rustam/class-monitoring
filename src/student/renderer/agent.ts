@@ -48,6 +48,12 @@ async function start(sessionId: string, sourceId: string, bitrate: number): Prom
     }
     const track = stream.getVideoTracks()[0];
     if (!track) throw new Error('the screen capture has no picture');
+    // The system stopped the capture (stopping it here doesn't fire this): the main process starts it again.
+    track.addEventListener('ended', () => {
+      if (sessions.get(sessionId) !== session) return;
+      stop(sessionId);
+      api.viewEnded(sessionId, 'the screen capture stopped');
+    });
     session.stream = stream;
     session.encoder = new ScreenEncoder(
       track,

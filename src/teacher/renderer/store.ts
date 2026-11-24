@@ -103,6 +103,8 @@ function setOnline(summary: StudentSummary, entry?: RosterEntry): void {
     answer: null,
     web: null,
     ...known,
+    // A fresh connection: the student signs in again (a reconnect while listed online never says "left").
+    name: entry ? entry.name : known?.name,
     handSince: summary.status.hand === null ? null : (known?.handSince ?? Date.now()),
     id: info.id,
     hostname: info.hostname,
@@ -125,8 +127,9 @@ export function joined(summary: StudentSummary, entry: RosterEntry): void {
 export function left(id: string): void {
   const s = students.get(id);
   if (!s) return;
-  students.set(id, { ...s, online: false, lastSeen: Date.now(), status: OFFLINE_STATUS, handSince: null, web: null });
-  changed(id);
+  // A signed-in name only lasts while the computer is connected (see roster.ts).
+  students.set(id, { ...s, name: undefined, online: false, lastSeen: Date.now(), status: OFFLINE_STATUS, handSince: null, web: null });
+  changed(s.name ? null : id); // Names can decide the card order.
 }
 
 export function setStatus(id: string, status: StudentStatus): void {

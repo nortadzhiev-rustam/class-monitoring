@@ -1,4 +1,6 @@
-// One-to-one chat with students, in the side panel's Chat tab.
+// One-to-one chat with students, in the side panel's Chat tab. Ending a chat
+// closes the chat window on the student's computer and clears the
+// conversation on both sides; the student can still open a new one.
 
 import type { ChatMessage } from '../ipc';
 import { $, api, errorText, toast } from './dom';
@@ -25,6 +27,7 @@ export function init(): void {
     openId = null;
     render();
   });
+  $('#chat-end').addEventListener('click', () => openId && endThread(openId));
   $('#chat-form').addEventListener('submit', (e) => {
     e.preventDefault();
     void send();
@@ -35,6 +38,17 @@ export function init(): void {
       void send();
     }
   });
+  render();
+}
+
+export const hasThread = (id: string) => threads.has(id);
+
+/** Ends the conversation: the student's chat window closes, and both sides start afresh next time. */
+export function endThread(id: string): void {
+  if (store.get(id)?.online) api.chatClose(id);
+  threads.delete(id);
+  if (store.get(id)?.unread) store.patch(id, { unread: 0 });
+  if (openId === id) openId = null;
   render();
 }
 

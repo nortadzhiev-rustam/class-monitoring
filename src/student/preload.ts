@@ -8,6 +8,7 @@ const api: StudentApi = {
   },
   viewFrame: (sessionId, meta, data) => ipcRenderer.send('student:view-frame', sessionId, meta, data),
   viewError: (sessionId, message) => ipcRenderer.send('student:view-error', sessionId, message),
+  viewEnded: (sessionId, message) => ipcRenderer.send('student:view-ended', sessionId, message),
   overlayReady: () => ipcRenderer.send('student:overlay-ready'),
   onOverlayState: (listener) => {
     ipcRenderer.on('student:overlay-state', (_e, state: OverlayState) => listener(state));

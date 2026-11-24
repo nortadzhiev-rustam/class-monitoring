@@ -1,7 +1,7 @@
 // Types shared by the teacher's main process, preload and renderer.
 
 import type { DisplayInfo } from '../shared/displays';
-import type { FrameMeta, Collect, InputEvent, Platform, Policy, Poll, PowerAction, StudentInfo, WebStatus } from '../shared/protocol';
+import type { ControlBlock, FrameMeta, Collect, InputEvent, Platform, Policy, Poll, PowerAction, StudentInfo, WebStatus } from '../shared/protocol';
 import type { WebRules } from '../shared/web-rules';
 
 export interface StudentStatus {
@@ -109,6 +109,8 @@ export type TeacherEvent =
   /** How many students are showing the broadcast. */
   | { type: 'broadcast-viewers'; count: number }
   | { type: 'student-error'; id: string; sessionId?: string; message: string }
+  /** While controlling: what keeps the teacher's mouse and keyboard from the student's window in front (null: nothing now). */
+  | { type: 'control-blocked'; id: string; sessionId: string; reason: ControlBlock | null }
   /** A computer tried to join but runs a different ClassMonitor version. */
   | { type: 'version-mismatch'; address: string }
   | { type: 'chat'; id: string; message: ChatMessage }
@@ -154,6 +156,8 @@ export interface TeacherApi {
   message(target: Target, text: string): Promise<number>;
   /** Sends a chat message; resolves to the message as sent (for the transcript). */
   chat(id: string, text: string): Promise<ChatMessage>;
+  /** Ends the chat: the student's chat window closes and their side of the conversation is cleared. */
+  chatClose(id: string): void;
   handClear(id: string): void;
   pollStart(target: Target, question: string, choices: string[]): Promise<Poll>;
   pollEnd(): void;
@@ -185,5 +189,7 @@ export interface TeacherApi {
   wake(ids: string[]): Promise<number>;
   /** Website rules for the target (null: open browsing). */
   setWeb(target: Target, rules: WebRules | null): void;
+  /** Turns the target's sound off, or back on. Kept, like blocked apps and websites, when the console restarts. */
+  setMute(target: Target, mute: boolean): void;
   onEvent(listener: (event: TeacherEvent) => void): void;
 }

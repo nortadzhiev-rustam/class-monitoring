@@ -60,9 +60,22 @@ export interface Policy {
   apps: string[] | null;
   /** Website rules applied by the browser extension, or null for open browsing. */
   web: WebRules | null;
+  /** The computer's sound is turned off. Older agents ignore it. */
+  mute: boolean;
 }
 
-export const OPEN_POLICY: Policy = { lock: null, broadcast: null, presenter: null, poll: null, register: null, collect: null, apps: null, web: null };
+export const OPEN_POLICY: Policy = { lock: null, broadcast: null, presenter: null, poll: null, register: null, collect: null, apps: null, web: null, mute: false };
+
+/** Why the teacher's mouse and keyboard can't reach what is in front on the student's computer, during remote control. */
+export type ControlBlock =
+  /** Windows shows its secure desktop: a User Account Control prompt, Ctrl+Alt+Del or the lock screen. */
+  | 'secure-desktop'
+  /** The window in front runs as administrator; Windows drops input other programs send it. */
+  | 'elevated'
+  /** macOS is asking for a password (it hides these prompts from screen sharing). */
+  | 'password-prompt';
+
+export const CONTROL_BLOCKS: readonly ControlBlock[] = ['secure-desktop', 'elevated', 'password-prompt'];
 
 /** The student's browser, as seen by the web filter extension and the student app's address watcher. */
 export interface WebStatus {
@@ -162,6 +175,8 @@ export type TeacherMessage =
   | ({ type: 'broadcast-frame'; sessionId: string } & FrameMeta)
   | { type: 'message'; id: string; text: string }
   | { type: 'chat'; id: string; text: string; at: number }
+  /** The teacher ended the chat: the student's chat window closes and the conversation starts fresh. Older agents ignore it. */
+  | { type: 'chat-close' }
   /** The teacher has dealt with the student's raised hand. */
   | { type: 'hand-clear' }
   | { type: 'open-url'; url: string }
@@ -188,6 +203,8 @@ export type StudentMessage =
   | { type: 'sign-in'; registerId: string; name: string }
   /** A blocked app was closed on the student's computer. */
   | { type: 'app-closed'; name: string }
+  /** During remote control: what keeps the teacher's input from reaching the window in front (null once it can again). */
+  | { type: 'control-blocked'; sessionId: string; reason: ControlBlock | null }
   | ({ type: 'web' } & WebStatus)
   | FileMessage
   | { type: 'error'; sessionId?: string; message: string };

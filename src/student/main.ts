@@ -22,8 +22,9 @@ import { openApp, openUrl } from './launch';
 import { isNativeHostLaunch, runNativeHost } from './native-host';
 import { Overlay } from './overlay';
 import { schedulePower } from './power';
+import { setMuted } from './mute';
 import { initPrompts, onPromptAction, removePrompt, removePrompts, showPrompt } from './prompts';
-import { showRegister } from './register';
+import { forgetSignIn, showRegister } from './register';
 import * as session from './session';
 import { canOfferSetup, confirmUserConfig, initSetup, openSetup, sendSetupStatus } from './setup';
 import { changed, onChange, send, state } from './state';
@@ -98,6 +99,7 @@ function toolbarState(): ToolbarState | null {
     presenting: session.isPresenting(),
     webLimited: policy.web !== null,
     appsBlocked: policy.apps !== null,
+    muted: policy.mute === true,
   };
 }
 
@@ -121,6 +123,7 @@ function applyPolicy(next: Policy): void {
   const apps = [...(policy.apps ?? []), ...(policy.web?.closeOtherBrowsers ? OTHER_BROWSERS : [])];
   setBlockedApps(apps.length ? apps : null);
   setWebRules(policy.web);
+  setMuted(policy.mute === true);
   changed();
 }
 
@@ -213,6 +216,9 @@ function onTeacherMessage(msg: TeacherMessage, payload: Buffer | undefined): voi
     case 'chat':
       receiveChat(msg.id, msg.text);
       break;
+    case 'chat-close':
+      resetChat();
+      break;
     case 'hand-clear':
       lowerHand();
       break;
@@ -243,8 +249,11 @@ function resetSession(): void {
   overlay.clear();
   setBlockedApps(null);
   setWebRules(null);
+  setMuted(false);
   // Cards that only make sense while the teacher is there go away with them.
   removePrompts((c) => c.kind === 'poll' || c.kind === 'sign-in' || c.kind === 'collect');
+  // The next lesson may be someone else's at this computer: they sign in afresh.
+  forgetSignIn();
   resetFiles();
   policy = OPEN_POLICY;
   state.teacher = null;
@@ -293,6 +302,9 @@ function registerIpc(): void {
   // Live video failed on this computer: carry on with still pictures.
   ipcMain.on('student:view-error', (e, sessionId: string, message: string) => {
     if (session.isAgent(e.sender)) session.fallBack(String(sessionId), String(message));
+  });
+  ipcMain.on('student:view-ended', (e, sessionId: string, message: string) => {
+    if (session.isAgent(e.sender)) session.videoEnded(String(sessionId), String(message).slice(0, 200));
   });
   ipcMain.on('student:overlay-ready', (e) => fromOverlay(e) && overlay.pushState(e.sender));
   ipcMain.on('student:broadcast-ready', (e, sessionId: string) => {

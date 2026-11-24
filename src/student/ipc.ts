@@ -71,6 +71,8 @@ export interface ToolbarState {
   /** Website rules or blocked apps are on. */
   webLimited: boolean;
   appsBlocked: boolean;
+  /** The teacher has turned this computer's sound off. */
+  muted: boolean;
 }
 
 export const TOOLBAR_ACTIONS = ['hand', 'chat', 'hand-in'] as const;
@@ -96,6 +98,8 @@ export interface StudentApi {
   viewFrame(sessionId: string, meta: FrameMeta, data: Uint8Array): void;
   /** Live video couldn't start (or stopped working) for this remote view. */
   viewError(sessionId: string, message: string): void;
+  /** The screen capture for this remote view stopped by itself (it can be started again). */
+  viewEnded(sessionId: string, message: string): void;
 
   // Overlay windows
   overlayReady(): void;

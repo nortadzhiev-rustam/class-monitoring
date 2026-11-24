@@ -4,6 +4,7 @@
 import { app, Menu, nativeImage, shell, systemPreferences, Tray } from 'electron';
 import { openChat } from './chat';
 import { handNote, lowerHand, raiseHand } from './hand';
+import { isMuted } from './mute';
 import { controlled, viewing } from './session';
 import { canOfferSetup, openSetup } from './setup';
 import { state } from './state';
@@ -67,6 +68,7 @@ export function updateTray(): void {
   if (connected) items.push({ label: 'Your teacher can see this screen', enabled: false });
   if (viewing()) items.push({ label: 'Your teacher is watching this screen now', enabled: false });
   if (controlled()) items.push({ label: 'Your teacher is controlling this computer', enabled: false });
+  if (isMuted()) items.push({ label: 'Your teacher has turned the sound off', enabled: false });
   if (connected) {
     const raised = handNote() !== null;
     items.push(
