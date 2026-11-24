@@ -16,8 +16,12 @@
     "test:load": "npm run build && node tests/load-broadcast.mjs",
     "icons": "electron scripts/render-icons.cjs",
     "pack:extension": "npm run build && node scripts/pack-extension.mjs",
-    "dist:teacher": "npm run build && npm run build:native && electron-builder --config electron-builder.teacher.yml",
-    "dist:student": "npm run build && npm run build:native && electron-builder --config electron-builder.student.yml"
+    "dist:teacher": "npm run build && npm run build:native && electron-builder --config electron-builder.teacher.yml --mac --win",
+    "dist:student": "npm run build && npm run build:native && electron-builder --config electron-builder.student.yml --mac --win",
+    "dist:teacher:mac": "npm run build && npm run build:native && electron-builder --config electron-builder.teacher.yml --mac",
+    "dist:student:mac": "npm run build && npm run build:native && electron-builder --config electron-builder.student.yml --mac",
+    "dist:teacher:win": "npm run build && electron-builder --config electron-builder.teacher.yml --win",
+    "dist:student:win": "npm run build && electron-builder --config electron-builder.student.yml --win"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
